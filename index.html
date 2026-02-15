@@ -373,8 +373,101 @@
     const _nameTokens = (s) => _base(s).split(' ').filter(Boolean);
     const accountKey = (name) => { const t = _nameTokens(name); if(t.length===0) return ''; if(t.length===1) return t[0]; const a=t[0], b=t[t.length-1]; return [a,b].sort().join('|'); };
     const accountFromEmail = (email) => { const local=(email||'').split('@')[0]; const parts = local.split(/[._-]+/).filter(Boolean); if(parts.length>=2){ const nome=_base(parts[0]); const cognome=_base(parts[1]); return `${cognome} ${nome}`.trim(); } return _base(local); };
-    const buildCurrentAccountKeys = () => { currentAccountKeys = new Set(); if(currentAccountName){ currentAccountKeys.add(accountKey(currentAccountName)); const t=_nameTokens(currentAccountName); if(t.length>=2){ const inv = `${t[t.length-1]} ${t.slice(0,-1).join(' ')}`.trim(); currentAccountKeys.add(accountKey(inv)); } } if(currentUserEmail){ const disp=accountFromEmail(currentUserEmail); currentAccountKeys.add(accountKey(disp)); const t=_nameTokens(disp); if(t.length>=2){ const inv = `${t[t.length-1]} ${t.slice(0,-1).join(' ')}`.trim(); currentAccountKeys.add(accountKey(inv)); } } };
+    // === POLICY: eccezioni per utenti specifici (per tutte le maschere e tabelle) ===
+// Nota: per questi utenti, la visibilità è determinata ESCLUSIVAMENTE dagli Account indicati qui.
+// Permessi:
+// - Maura: può VEDERE e MODIFICARE, ma NON può INSERIRE / CANCELLARE.
+// - Federico / Matteo / Silvio: possono VEDERE, MODIFICARE, INSERIRE e CANCELLARE.
+const USER_POLICIES = {
+  "maura.capitanio@wolterskluwer.com": {
+    accounts: ["BRUGNONE - CAPITANIO", "MITRO - CAPITANIO", "POZZOLI - CAPITANIO"],
+    can: { view: true, update: true, insert: true, del: true }
+  },
+  "federico.brugnone@wolterskluwer.com": {
+    accounts: ["FEDERICO BRUGNONE", "BRUGNONE - CAPITANIO"],
+    can: { view: true, update: true, insert: true, del: true }
+  },
+  "matteo.pozzoli@wolterskluwer.com": {
+    accounts: ["MATTEO POZZOLI", "POZZOLI - CAPITANIO"],
+    can: { view: true, update: true, insert: true, del: true }
+  },
+  "s.mitro@wolterskluwer.com": {
+    accounts: ["SILVIO MITRO", "MITRO - CAPITANIO"],
+    can: { view: true, update: true, insert: true, del: true }
+  }
+};
+
+const getCurrentPolicy = () => {
+  const email = (currentUserEmail || '').toLowerCase();
+  return USER_POLICIES[email] || null;
+};
+
+const userCan = (perm) => {
+  if (isCurrentAdmin()) return true;
+  const p = getCurrentPolicy();
+  if (!p) return true; // comportamento precedente per altri utenti
+  return !!(p.can && p.can[perm]);
+};
+
+const getPolicyAccounts = () => {
+  const p = getCurrentPolicy();
+  return p ? (p.accounts || []) : [];
+};
+
+const addAccountToKeySet = (name) => {
+  if(!name) return;
+  const k1 = accountKey(name);
+  if(k1) currentAccountKeys.add(k1);
+  const t = _nameTokens(name);
+  if(t.length >= 2) {
+    const inv = `${t[t.length-1]} ${t.slice(0,-1).join(' ')}`.trim();
+    const k2 = accountKey(inv);
+    if(k2) currentAccountKeys.add(k2);
+  }
+};
+
+const buildCurrentAccountKeys = () => {
+  currentAccountKeys = new Set();
+
+  const p = getCurrentPolicy();
+  if(p && Array.isArray(p.accounts) && p.accounts.length > 0) {
+    // Per gli utenti con policy, la visibilità è limitata agli account configurati.
+    p.accounts.forEach(addAccountToKeySet);
+    return;
+  }
+
+  // Default (comportamento precedente)
+  if(currentAccountName) addAccountToKeySet(currentAccountName);
+  if(currentUserEmail) addAccountToKeySet(accountFromEmail(currentUserEmail));
+};
     const recordBelongsToUser = (accValue, sapValue) => { if(isCurrentAdmin()) return true; if(accValue && currentAccountKeys.has(accountKey(accValue))) return true; if(sapValue && allowedSAPSet.has(String(sapValue).trim())) return true; return false; };
+
+// --- Validazione scrittura su base ACCOUNT (coerente con le policy) ---
+const canWriteAccount = (accValue) => {
+  if(isCurrentAdmin()) return true;
+  if(!accValue) return false;
+  return currentAccountKeys.has(accountKey(accValue));
+};
+
+const assertWriteAllowed = (accValue, sapValue) => {
+  // 1) permesso di operazione (insert/update/del)
+  // La verifica della specifica operazione viene gestita nei singoli handler (userCan('insert'/'update'/'del')).
+  if(isCurrentAdmin()) return true;
+
+  // 2) perimetro: SOLO account consentiti
+  if(canWriteAccount(accValue)) return true;
+
+  // fallback: consenti tramite SAP solo per utenti senza policy (comportamento storico)
+  const p = getCurrentPolicy();
+  if(!p && sapValue && allowedSAPSet.has(String(sapValue).trim())) return true;
+
+  return false;
+};
+
+const hasAzioniColumn = () => {
+  // colonna azioni visibile se può modificare o cancellare (o admin)
+  return isCurrentAdmin() || userCan('update') || userCan('del');
+};
     const rebuildVisibilityContext = () => {
       clientiView = isCurrentAdmin() ? [...globalClienti] : globalClienti.filter(c => recordBelongsToUser(c.Account, c.SAP));
       allowedSAPSet = new Set(clientiView.map(c => String(c.SAP).trim()));
@@ -394,7 +487,7 @@
 
     function checkUserMapping(firebaseUser) { const email = firebaseUser.email.toLowerCase(); const userKey = Object.keys(globalUsers).find(k => globalUsers[k].u && globalUsers[k].u.toLowerCase() === email); if (userKey) { const uData = globalUsers[userKey]; currentUserEmail = email; currentAccountName = uData.acc; currentUserRole = uData.role || 'USER'; document.getElementById('userDisplay').innerText = currentAccountName; document.getElementById('userEmailDisplay').innerText = email; buildCurrentAccountKeys(); startApp(); } else { alert("Accesso riuscito, ma l'utente non è configurato nel gestionale. Contatta l'amministratore per farti assegnare un Ruolo."); currentUserEmail = email; currentAccountName = firebaseUser.displayName || accountFromEmail(email); currentUserRole = 'GUEST'; document.getElementById('userDisplay').innerText = currentAccountName; document.getElementById('userEmailDisplay').innerText = email; buildCurrentAccountKeys(); startApp(); } }
 
-    function startApp() { document.getElementById('loginOverlay').style.display = 'none'; document.getElementById('mainApp').style.display = 'flex'; if (!isCurrentAdmin()) { document.getElementById('nav-item-strumenti').style.display = 'none'; document.getElementById('btnAddCliente').style.display = 'none'; document.getElementById('btnAddContratto').style.display = 'none'; } else { document.getElementById('nav-item-strumenti').style.display = 'block'; document.getElementById('btnAddCliente').style.display = 'block'; document.getElementById('btnAddContratto').style.display = 'block'; } rebuildVisibilityContext(); renderTabelle(); if(!document.querySelector('.active-view')) window.navigate('home'); }
+    function startApp() { document.getElementById('loginOverlay').style.display = 'none'; document.getElementById('mainApp').style.display = 'flex'; const canManageMaster = isCurrentAdmin(); if (!isCurrentAdmin()) { document.getElementById('nav-item-strumenti').style.display = 'none'; } else { document.getElementById('nav-item-strumenti').style.display = 'block'; } document.getElementById('btnAddCliente').style.display = canManageMaster ? 'block' : 'none'; document.getElementById('btnAddContratto').style.display = canManageMaster ? 'block' : 'none'; rebuildVisibilityContext(); renderTabelle(); if(!document.querySelector('.active-view')) window.navigate('home'); }
 
     // --- GESTIONE UTENTI ADMIN (unchanged) ---
     window.newUserAdmin = () => { document.getElementById('formEditUser').reset(); document.getElementById('editUserKey').value = ''; new bootstrap.Modal(document.getElementById('modalEditUser')).show(); };
@@ -433,13 +526,71 @@
     window.toggleSystemCheckboxes = (source) => { const container = document.getElementById('filterMapSistemaContainer'); const checkboxes = container.querySelectorAll('input[type="checkbox"]'); checkboxes.forEach(cb => { if(cb.id !== 'sys_ALL') cb.checked = source.checked; }); };
     window.populateMigrationForm = () => { const select = document.getElementById('migrClienteSelect'); select.innerHTML = '<option value="">-- Seleziona Cliente da Migrare --</option>'; const targetSystems = ['OASNOTSNEW', 'OASUITNOT']; const eligibleContracts = contrattiView.filter(c => targetSystems.includes(c.Codice_SISTEMA)); eligibleContracts.sort((a,b) => (a.Nome || '').localeCompare(b.Nome || '')); eligibleContracts.forEach(con => { const valData = JSON.stringify({ sap: con.SAP, cliente: con.Nome, account: con.Account, sistema: con.Codice_SISTEMA, qta: con["QUANTITA'"] || 0 }); const label = `${con.Nome} (SAP: ${con.SAP}) - ${con.Codice_SISTEMA}`; select.innerHTML += `<option value='${valData}'>${label}</option>`; }); };
     window.updateMigrationUserCount = () => { const select = document.getElementById('migrClienteSelect'); const rawVal = select.value; if(!rawVal){ document.getElementById('migrQta').value=''; return;} try { const data = JSON.parse(rawVal); document.getElementById('migrQta').value = data.qta; } catch(e){ console.error('Errore parsing dati migrazione', e);} };
-    window.salvaMigrazione = () => { const rawVal = document.getElementById('migrClienteSelect').value; const dataPrev = document.getElementById('migrData').value; const stato = document.getElementById('migrStato').value; const note = document.getElementById('migrNote').value; if(!rawVal) return alert("Seleziona un cliente."); if(!dataPrev) return alert("Inserisci la data prevista."); const data = JSON.parse(rawVal); const accountToSave = isCurrentAdmin() ? (data.account || currentAccountName) : currentAccountName; const newMigr = { SAP: data.sap, Cliente: data.cliente, Account: accountToSave ? _base(accountToSave) : '', Sistema_Attuale: data.sistema, Utenti_Migrazione: parseInt(data.qta) || 0, Data_Prevista: dataPrev, Data_Inserimento: new Date().toISOString().split('T')[0], Stato: stato, Note: note }; push(ref(db, 'migrazioni'), newMigr).then(() => { alert("Migrazione pianificata con successo!"); document.getElementById('migrClienteSelect').value = ''; document.getElementById('migrQta').value = ''; document.getElementById('migrData').value = ''; document.getElementById('migrNote').value = ''; }).catch(e => alert(e.message)); };
+    window.salvaMigrazione = () => {
+  if(!userCan('insert')) return alert('Permesso negato: non puoi inserire nuove migrazioni.');
+
+  const rawVal = document.getElementById('migrClienteSelect').value;
+  const dataPrev = document.getElementById('migrData').value;
+  const stato = document.getElementById('migrStato').value;
+  const note = document.getElementById('migrNote').value;
+  if(!rawVal) return alert('Seleziona un cliente.');
+  if(!dataPrev) return alert('Inserisci la data prevista.');
+
+  const data = JSON.parse(rawVal);
+  const acc = _base(data.account || '');
+  if(!assertWriteAllowed(acc, data.sap)) return alert('Permesso negato: Account non consentito.');
+
+  const newMigr = {
+    SAP: data.sap,
+    Cliente: data.cliente,
+    Account: acc,
+    Sistema_Attuale: data.sistema,
+    Utenti_Migrazione: parseInt(data.qta) || 0,
+    Data_Prevista: dataPrev,
+    Data_Inserimento: new Date().toISOString().split('T')[0],
+    Stato: stato,
+    Note: note
+  };
+
+  push(ref(db, 'migrazioni'), newMigr)
+    .then(() => {
+      alert('Migrazione pianificata con successo!');
+      document.getElementById('migrClienteSelect').value = '';
+      document.getElementById('migrQta').value = '';
+      document.getElementById('migrData').value = '';
+      document.getElementById('migrNote').value = '';
+    })
+    .catch(e => alert(e.message));
+};
     window.openEditMigrazione = (key) => { const migr = migrazioniView.find(m => m.firebaseKey === key) || globalMigrazioni.find(m => m.firebaseKey === key); if(!migr) return; document.getElementById('editMigrKey').value = key; document.getElementById('editMigrCliente').value = `${migr.Cliente} (${migr.SAP})`; document.getElementById('editMigrData').value = migr.Data_Prevista || ''; document.getElementById('editMigrStato').value = migr.Stato || 'Prevista'; document.getElementById('editMigrNote').value = migr.Note || ''; new bootstrap.Modal(document.getElementById('modalEditMigrazione')).show(); };
-    window.saveEditMigrazione = () => { const key = document.getElementById('editMigrKey').value; if(!key) return; const updates = { Data_Prevista: document.getElementById('editMigrData').value, Stato: document.getElementById('editMigrStato').value, Note: document.getElementById('editMigrNote').value }; update(ref(db, `migrazioni/${key}`), updates).then(() => { bootstrap.Modal.getInstance(document.getElementById('modalEditMigrazione')).hide(); alert("Migrazione aggiornata!"); }).catch(e => alert(e.message)); };
-    window.eliminaMigrazione = (key) => { if(confirm("Eliminare?")) remove(ref(db, `migrazioni/${key}`)); };
+    window.saveEditMigrazione = () => {
+  if(!userCan('update')) return alert('Permesso negato: non puoi modificare migrazioni.');
+  const key = document.getElementById('editMigrKey').value;
+  if(!key) return;
+
+  const row = (migrazioniView.find(m => m.firebaseKey === key) || globalMigrazioni.find(m => m.firebaseKey === key) || {});
+  if(row && !assertWriteAllowed(row.Account, row.SAP)) return alert('Permesso negato: record fuori perimetro.');
+
+  const updates = {
+    Data_Prevista: document.getElementById('editMigrData').value,
+    Stato: document.getElementById('editMigrStato').value,
+    Note: document.getElementById('editMigrNote').value
+  };
+
+  update(ref(db, `migrazioni/${key}`), updates)
+    .then(() => { bootstrap.Modal.getInstance(document.getElementById('modalEditMigrazione')).hide(); alert('Migrazione aggiornata!'); })
+    .catch(e => alert(e.message));
+};
+    window.eliminaMigrazione = (key) => {
+  if(!userCan('del')) return alert('Permesso negato: non puoi cancellare migrazioni.');
+  const row = (migrazioniView.find(m => m.firebaseKey === key) || globalMigrazioni.find(m => m.firebaseKey === key));
+  if(!row) return alert('Record non trovato.');
+  if(!assertWriteAllowed(row.Account, row.SAP)) return alert('Permesso negato: record fuori perimetro.');
+  if(confirm('Eliminare?')) remove(ref(db, `migrazioni/${key}`));
+};
     window.populateMigrAccountFilter = () => { const select = document.getElementById('filterMigrAccountMulti'); if(!select) return; select.innerHTML = ''; const allAccounts = new Set(); const src = isCurrentAdmin() ? globalMigrazioni : migrazioniView; src.forEach(m => { if(m.Account) allAccounts.add(_base(m.Account)); }); Array.from(allAccounts).sort().forEach(acc => { select.innerHTML += `<option value="${acc}">${acc}</option>`; }); };
     window.applyMigrazioniFilters = () => { const tbody = document.getElementById('tabellaMigrazioniBody'); const trs = tbody.getElementsByTagName("tr"); const fStato = document.getElementById('filterMigrStato').value.toUpperCase(); const fDateStartVal = document.getElementById('filterMigrDateStart').value; const fDateEndVal = document.getElementById('filterMigrDateEnd').value; const fDateStart = fDateStartVal ? new Date(fDateStartVal) : null; const fDateEnd = fDateEndVal ? new Date(fDateEndVal) : null; const fSap = document.getElementById('filterMigrSap').value.toUpperCase(); const fCliente = document.getElementById('filterMigrCliente').value.toUpperCase(); const selAccount = document.getElementById('filterMigrAccountMulti'); const fAccounts = Array.from(selAccount.selectedOptions).map(o => o.value.toUpperCase()); const fSistema = document.getElementById('filterMigrSistema').value.toUpperCase(); const fUtenti = document.getElementById('filterMigrUtenti').value.toUpperCase(); const fNote = document.getElementById('filterMigrNote').value.toUpperCase(); for (let i = 0; i < trs.length; i++) { const tds = trs[i].getElementsByTagName("td"); if(tds.length < 2) continue; const txtStato = (tds[1].textContent || "").toUpperCase(); const txtData = (tds[2].textContent || "").trim(); const txtSap = (tds[3].textContent || "").toUpperCase(); const txtCliente = (tds[4].textContent || "").toUpperCase(); const txtAccount = (tds[5].textContent || "").toUpperCase(); const txtSistema = (tds[6].textContent || "").toUpperCase(); const txtUtenti = (tds[7].textContent || "").toUpperCase(); const txtNote = (tds[8].textContent || "").toUpperCase(); let show = true; if (fStato && txtStato.indexOf(fStato) === -1) show = false; if (show && fSap && txtSap.indexOf(fSap) === -1) show = false; if (show && fCliente && txtCliente.indexOf(fCliente) === -1) show = false; if (show && fSistema && txtSistema.indexOf(fSistema) === -1) show = false; if (show && fUtenti && txtUtenti.indexOf(fUtenti) === -1) show = false; if (show && fNote && txtNote.indexOf(fNote) === -1) show = false; if (show && fAccounts.length > 0) { if (!fAccounts.includes(txtAccount)) show = false; } if (show && (fDateStart || fDateEnd)) { if(!txtData) { show = false; } else { const parts = txtData.split('/'); if(parts.length === 3) { const rowDate = new Date(parts[2], parts[1]-1, parts[0]); if (fDateStart && rowDate < fDateStart) show = false; if (fDateEnd && rowDate > fDateEnd) show = false; } else { show = false; } } } trs[i].style.display = show ? "" : "none"; } };
-    function renderTabellaMigrazioni() { const tbody = document.getElementById('tabellaMigrazioniBody'); tbody.innerHTML = ''; const sorted = [...migrazioniView].sort((a,b) => new Date(a.Data_Prevista) - new Date(b.Data_Prevista)); window.populateMigrAccountFilter(); if(sorted.length === 0) { tbody.innerHTML = '<tr><td colspan="9" class="text-center text-muted">Nessuna migrazione pianificata.</td></tr>'; return; } sorted.forEach(m => { let badgeClass = 'bg-secondary'; if(m.Stato === 'Prevista') badgeClass = 'bg-warning text-dark'; else if(m.Stato === 'Pianificata') badgeClass = 'bg-success'; else if(m.Stato === 'Sospesa') badgeClass = 'bg-danger'; else if(m.Stato === 'Altro') badgeClass = 'bg-info text-dark'; const d = new Date(m.Data_Prevista); const dataFmt = !isNaN(d) ? d.toLocaleDateString('it-IT') : m.Data_Prevista; tbody.innerHTML += ` <tr> <td style="white-space:nowrap;"> <button class="btn btn-sm btn-outline-primary me-1" onclick="window.openEditMigrazione('${m.firebaseKey}')"><i class="bi bi-pencil"></i></button> <button class="btn btn-sm btn-outline-danger" onclick="window.eliminaMigrazione('${m.firebaseKey}')"><i class="bi bi-trash"></i></button> </td> <td><span class="badge ${badgeClass}">${m.Stato || 'Prevista'}</span></td> <td class="fw-bold">${dataFmt}</td> <td>${m.SAP || ''}</td> <td>${m.Cliente || ''}</td> <td>${m.Account || ''}</td> <td class="text-info font-monospace">${m.Sistema_Attuale || ''}</td> <td class="text-center fw-bold fs-6">${m.Utenti_Migrazione}</td> <td class="small text-muted" style="max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${m.Note || ''}</td> </tr>`; }); }
+    function renderTabellaMigrazioni() { const tbody = document.getElementById('tabellaMigrazioniBody'); tbody.innerHTML = ''; const sorted = [...migrazioniView].sort((a,b) => new Date(a.Data_Prevista) - new Date(b.Data_Prevista)); window.populateMigrAccountFilter(); if(sorted.length === 0) { tbody.innerHTML = '<tr><td colspan="9" class="text-center text-muted">Nessuna migrazione pianificata.</td></tr>'; return; } sorted.forEach(m => { let badgeClass = 'bg-secondary'; if(m.Stato === 'Prevista') badgeClass = 'bg-warning text-dark'; else if(m.Stato === 'Pianificata') badgeClass = 'bg-success'; else if(m.Stato === 'Sospesa') badgeClass = 'bg-danger'; else if(m.Stato === 'Altro') badgeClass = 'bg-info text-dark'; const d = new Date(m.Data_Prevista); const dataFmt = !isNaN(d) ? d.toLocaleDateString('it-IT') : m.Data_Prevista; tbody.innerHTML += ` <tr> <td style="white-space:nowrap;"> <button class="btn btn-sm btn-outline-primary me-1" onclick="window.openEditMigrazione('${m.firebaseKey}')"><i class="bi bi-pencil"></i></button> ${userCan('del') ? `<button class="btn btn-sm btn-outline-danger" onclick="window.eliminaMigrazione('${m.firebaseKey}')"><i class="bi bi-trash"></i></button>` : ''} </td> <td><span class="badge ${badgeClass}">${m.Stato || 'Prevista'}</span></td> <td class="fw-bold">${dataFmt}</td> <td>${m.SAP || ''}</td> <td>${m.Cliente || ''}</td> <td>${m.Account || ''}</td> <td class="text-info font-monospace">${m.Sistema_Attuale || ''}</td> <td class="text-center fw-bold fs-6">${m.Utenti_Migrazione}</td> <td class="small text-muted" style="max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${m.Note || ''}</td> </tr>`; }); }
 
     // --- STATISTICHE ---
     window.initStatistiche = () => { const boxContainer = document.getElementById('filterMapSistemaContainer'); if(!boxContainer.querySelector('input')) { const sistemiUnici = [...new Set(contrattiView.map(c => c.Codice_SISTEMA).filter(x => x))].sort(); boxContainer.innerHTML = ` <div class="form-check border-bottom mb-2 pb-1 sticky-top bg-white"> <input class="form-check-input fw-bold" type="checkbox" id="sys_ALL" onclick="window.toggleSystemCheckboxes(this)"> <label class="form-check-label fw-bold" for="sys_ALL">Tutti</label> </div>`; if(sistemiUnici.length === 0) boxContainer.innerHTML = '<span class="text-muted small">Nessun sistema trovato.</span>'; sistemiUnici.forEach(s => { const id = `sys_${s.replace(/[^a-zA-Z0-9]/g, '')}`; boxContainer.innerHTML += `<div class="form-check"><input class="form-check-input" type="checkbox" value="${s}" id="${id}"><label class="form-check-label small" for="${id}">${s}</label></div>`; }); } const selAcc = document.getElementById('filterMapAccount'); if(selAcc.options.length <= 1) { selAcc.innerHTML = '<option value="">Tutti</option>'; const accountsUnici = [...new Set(clientiView.map(c => c.Account).filter(x => x))].sort(); accountsUnici.forEach(a => selAcc.innerHTML += `<option value="${a}">${a}</option>`); } if (!mapInstance) { mapInstance = L.map('mapContainer').setView([41.9028, 12.4964], 6); L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap contributors' }).addTo(mapInstance); markersGroup = L.layerGroup().addTo(mapInstance);
@@ -471,27 +622,193 @@
     // --- Scheda cliente / Ordini (adattati su *View) ---
     window.caricaScheda = () => { const q = document.getElementById('searchInput').value.toLowerCase(); if(!q) return; const cliente = clientiView.find(c => { const s = String(c.SAP || '').toLowerCase(); const n = String(c.Nome || '').toLowerCase(); return (q.includes(s) && q.includes(n)) || s.includes(q) || n.includes(q); }); if (cliente) { const colConfigs = [ { label: "SAP", key: "SAP" }, { label: "Nome", key: "Nome" }, { label: "PIVA", key: "PIVA" }, { label: "Cod. Fiscale", key: "Codice_Fiscale" }, { label: "Account", key: "Account" }, { label: "Via", key: "Via_e_numero" }, { label: "Città", key: "Città" }, { label: "Prov", key: "Prov" }, { label: "Telefono", key: "Telefono" }, { label: "Email", key: "e_mail" } ]; let th = "", td = ""; colConfigs.forEach(conf => { th += `<th>${conf.label}</th>`; let val = (conf.key === 'Codice_Fiscale') ? getCodiceFiscale(cliente) : (cliente[conf.key] ?? ''); td += `<td>${val}</td>`; }); document.getElementById('tabellaExcelHome').innerHTML = `<thead><tr>${th}</tr></thead><tbody><tr>${td}</tr></tbody>`; document.getElementById('cardDatiCompleti').style.display = 'block'; const contratti = contrattiView.filter(c => String(c.SAP) === String(cliente.SAP)); const tbody = document.getElementById('tabellaContrattiBodyHome'); tbody.innerHTML = contratti.length ? contratti.map(c => { const valMen = parseFloat(c.VAL_UN_MEN || 0).toLocaleString('it-IT', {minimumFractionDigits: 2, maximumFractionDigits: 2}); let dataFmt = c.DATA_SCAD; if(c.DATA_SCAD) { const d = new Date(c.DATA_SCAD); if(!isNaN(d.getTime())) dataFmt = d.toLocaleDateString('it-IT'); } return `<tr><td>${c.SAP||''}</td><td>${c.Codice_SISTEMA||''}</td><td>€ ${c.VALORE_RINNOVO||0}</td><td class="fw-bold">€ ${valMen}</td><td>${c.TESTO_ORD_||''}</td><td>${dataFmt}</td><td>${c["QUANTITA'"]||''}</td><td>${c.PASSO||''}</td><td>${c.Pagamento||''}</td></tr>`; }).join('') : '<tr><td colspan="9" class="text-center text-muted">Nessun contratto.</td></tr>'; document.getElementById('cardContratti').style.display = 'block'; document.getElementById('cardNuovoOrdine').style.display = 'block'; document.getElementById('ordData').valueAsDate = new Date(); document.getElementById('ordSap').value = cliente.SAP || ''; document.getElementById('ordCliente').value = cliente.Nome || ''; document.getElementById('ordAccount').value = cliente.Account || ''; } else { alert("Cliente non trovato."); } };
     window.printContrattiCliente = () => { const cliente = document.getElementById('ordCliente').value; if(!cliente) return alert("Nessun cliente selezionato."); const tableHtml = document.querySelector('#cardContratti table').outerHTML; const printWin = window.open('', '', 'height=600,width=900'); printWin.document.write('<html><head><title>Stampa Contratti</title><style>body { font-family: "Segoe UI", sans-serif; padding: 20px; } h2 { color: #333; border-bottom: 2px solid #0d6efd; padding-bottom: 10px; } table { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 12px; } th, td { border: 1px solid #ddd; padding: 8px; text-align: left; } th { background-color: #f8f9fa; font-weight: bold; }</style></head><body>'); printWin.document.write(`<h2>Contratti Attivi: ${cliente}</h2>${tableHtml}</body></html>`); printWin.document.close(); printWin.focus(); setTimeout(() => { printWin.print(); printWin.close(); }, 500); };
-    window.registraOrdine = () => { const ord = { Data_ordine: document.getElementById('ordData').value, SAP: document.getElementById('ordSap').value, Cliente: document.getElementById('ordCliente').value, Account: document.getElementById('ordAccount').value, Ordine_AP: document.getElementById('ordOrdineAP').value, Descrizione_Ordine: document.getElementById('ordDesc').value, Note: document.getElementById('ordNote').value, WKI_m: parseFloat(document.getElementById('ordWkiMese').value) || 0, M365_m: parseFloat(document.getElementById('ordM365Mese').value) || 0, Una_Tantum: parseFloat(document.getElementById('ordUnaTantum').value) || 0, Stato: document.getElementById('ordStato').value, Data_prima_fatt: document.getElementById('ordDataFatt').value, isFatturato: false, Finanaziata: "" }; if(!ord.SAP) return alert("Dati obbligatori mancanti (SAP)."); if(!isCurrentAdmin()) ord.Account = _base(currentAccountName); push(ref(db, 'fatturato'), ord).then(() => { alert("Ordine salvato!"); document.getElementById('formOrdine').reset(); window.navigate('fatturato'); }); };
+    window.registraOrdine = () => {
+  if(!userCan('insert')) return alert('Permesso negato: non puoi inserire nuovi ordini.');
+
+  const ord = {
+    Data_ordine: document.getElementById('ordData').value,
+    SAP: document.getElementById('ordSap').value,
+    Cliente: document.getElementById('ordCliente').value,
+    Account: document.getElementById('ordAccount').value,
+    Ordine_AP: document.getElementById('ordOrdineAP').value,
+    Descrizione_Ordine: document.getElementById('ordDesc').value,
+    Note: document.getElementById('ordNote').value,
+    WKI_m: parseFloat(document.getElementById('ordWkiMese').value) || 0,
+    M365_m: parseFloat(document.getElementById('ordM365Mese').value) || 0,
+    Una_Tantum: parseFloat(document.getElementById('ordUnaTantum').value) || 0,
+    Stato: document.getElementById('ordStato').value,
+    Data_prima_fatt: document.getElementById('ordDataFatt').value,
+    isFatturato: false,
+    Finanaziata: ""
+  };
+
+  if(!ord.SAP) return alert("Dati obbligatori mancanti (SAP)." );
+
+  ord.Account = _base(ord.Account || '');
+  if(!assertWriteAllowed(ord.Account, ord.SAP)) return alert('Permesso negato: Account non consentito.');
+
+  push(ref(db, 'fatturato'), ord)
+    .then(() => { alert('Ordine salvato!'); document.getElementById('formOrdine').reset(); window.navigate('fatturato'); })
+    .catch(e => alert(e.message));
+};
     window.openEditOrdine = (key) => { const ord = fatturatoView.find(o => o.firebaseKey === key) || globalFatturato.find(o => o.firebaseKey === key); if(!ord) return; document.getElementById('editKey').value = key; document.getElementById('editData').value = ord.Data_ordine || ''; document.getElementById('editSap').value = ord.SAP || ''; document.getElementById('editCliente').value = ord.Cliente || ''; document.getElementById('editAccount').value = ord.Account || ''; document.getElementById('editOrdineAP').value = ord.Ordine_AP || ''; document.getElementById('editDesc').value = ord.Descrizione_Ordine || ''; document.getElementById('editNote').value = ord.Note || ''; document.getElementById('editWki').value = ord.WKI_m || 0; document.getElementById('editM365').value = ord.M365_m || 0; document.getElementById('editUna').value = ord.Una_Tantum || 0; document.getElementById('editDataFatt').value = ord.Data_prima_fatt || ''; const selStato = document.getElementById('editStato'); selStato.innerHTML = ''; ['Evaso','da evadere','Sospeso','Parziale'].forEach(s => { const opt = document.createElement('option'); opt.value = s; opt.text = s; if(s === ord.Stato) opt.selected = true; selStato.appendChild(opt); }); new bootstrap.Modal(document.getElementById('modalEditOrdine')).show(); };
-    window.saveEditOrdine = () => { const key = document.getElementById('editKey').value; if(!key) return; const updates = { Data_ordine: document.getElementById('editData').value, SAP: document.getElementById('editSap').value, Cliente: document.getElementById('editCliente').value, Account: document.getElementById('editAccount').value, Ordine_AP: document.getElementById('editOrdineAP').value, Descrizione_Ordine: document.getElementById('editDesc').value, Note: document.getElementById('editNote').value, WKI_m: parseFloat(document.getElementById('editWki').value) || 0, M365_m: parseFloat(document.getElementById('editM365').value) || 0, Una_Tantum: parseFloat(document.getElementById('editUna').value) || 0, Stato: document.getElementById('editStato').value, Data_prima_fatt: document.getElementById('editDataFatt').value }; if(!isCurrentAdmin()) updates.Account = _base(currentAccountName); update(ref(db, `fatturato/${key}`), updates).then(() => { bootstrap.Modal.getInstance(document.getElementById('modalEditOrdine')).hide(); alert("Modifiche salvate!"); }).catch(e => alert(e.message)); };
+    window.saveEditOrdine = () => {
+  if(!userCan('update')) return alert('Permesso negato: non puoi modificare ordini.');
+
+  const key = document.getElementById('editKey').value;
+  if(!key) return;
+
+  const updates = {
+    Data_ordine: document.getElementById('editData').value,
+    SAP: document.getElementById('editSap').value,
+    Cliente: document.getElementById('editCliente').value,
+    Account: _base(document.getElementById('editAccount').value || ''),
+    Ordine_AP: document.getElementById('editOrdineAP').value,
+    Descrizione_Ordine: document.getElementById('editDesc').value,
+    Note: document.getElementById('editNote').value,
+    WKI_m: parseFloat(document.getElementById('editWki').value) || 0,
+    M365_m: parseFloat(document.getElementById('editM365').value) || 0,
+    Una_Tantum: parseFloat(document.getElementById('editUna').value) || 0,
+    Stato: document.getElementById('editStato').value,
+    Data_prima_fatt: document.getElementById('editDataFatt').value
+  };
+
+  if(!assertWriteAllowed(updates.Account, updates.SAP)) return alert('Permesso negato: Account/SAP non consentiti.');
+
+  update(ref(db, `fatturato/${key}`), updates)
+    .then(() => { bootstrap.Modal.getInstance(document.getElementById('modalEditOrdine')).hide(); alert('Modifiche salvate!'); })
+    .catch(e => alert(e.message));
+};
 
     // --- Clienti/Contratti (adattati su *View) ---
     window.nuovoCliente = () => { document.getElementById('formEditCliente').reset(); document.getElementById('cliKey').value = ''; new bootstrap.Modal(document.getElementById('modalEditCliente')).show(); };
     window.openEditCliente = (key) => { const cli = clientiView.find(c => c.firebaseKey === key) || globalClienti.find(c => c.firebaseKey === key); if(!cli) return; document.getElementById('cliKey').value = key; document.getElementById('cliSap').value = cli.SAP || ''; document.getElementById('cliNome').value = cli.Nome || ''; document.getElementById('cliPiva').value = cli.PIVA || ''; document.getElementById('cliSwOa').value = getCodiceFiscale(cli); document.getElementById('cliAccount').value = cli.Account || ''; document.getElementById('cliTel').value = cli.Telefono || ''; document.getElementById('cliVia').value = cli.Via_e_numero || ''; document.getElementById('cliCitta').value = cli.Città || ''; document.getElementById('cliProv').value = cli.Prov || ''; document.getElementById('cliEmail').value = cli.e_mail || ''; document.getElementById('cliNote').value = cli.Note || ''; new bootstrap.Modal(document.getElementById('modalEditCliente')).show(); };
-    window.saveCliente = () => { const key = document.getElementById('cliKey').value; const data = { SAP: document.getElementById('cliSap').value, Nome: document.getElementById('cliNome').value, PIVA: document.getElementById('cliPiva').value, Codice_Fiscale: document.getElementById('cliSwOa').value, Account: document.getElementById('cliAccount').value, Telefono: document.getElementById('cliTel').value, Via_e_numero: document.getElementById('cliVia').value, Città: document.getElementById('cliCitta').value, Prov: document.getElementById('cliProv').value, e_mail: document.getElementById('cliEmail').value, Note: document.getElementById('cliNote').value }; if(key) update(ref(db, `clienti/${key}`), data).then(() => { bootstrap.Modal.getInstance(document.getElementById('modalEditCliente')).hide(); alert("Cliente aggiornato!"); }); else push(ref(db, 'clienti'), data).then(() => { bootstrap.Modal.getInstance(document.getElementById('modalEditCliente')).hide(); alert("Nuovo cliente creato!"); }); };
-    window.eliminaCliente = (key) => { if(confirm("Sei sicuro di voler eliminare questo CLIENTE?")) remove(ref(db, `clienti/${key}`)); };
+    window.saveCliente = () => {
+  const key = document.getElementById('cliKey').value;
+  const isNew = !key;
+
+  if(isNew && !userCan('insert')) return alert('Permesso negato: non puoi inserire clienti.');
+  if(!isNew && !userCan('update')) return alert('Permesso negato: non puoi modificare clienti.');
+
+  const data = {
+    SAP: document.getElementById('cliSap').value,
+    Nome: document.getElementById('cliNome').value,
+    PIVA: document.getElementById('cliPiva').value,
+    Codice_Fiscale: document.getElementById('cliSwOa').value,
+    Account: _base(document.getElementById('cliAccount').value || ''),
+    Telefono: document.getElementById('cliTel').value,
+    Via_e_numero: document.getElementById('cliVia').value,
+    Città: document.getElementById('cliCitta').value,
+    Prov: document.getElementById('cliProv').value,
+    e_mail: document.getElementById('cliEmail').value,
+    Note: document.getElementById('cliNote').value
+  };
+
+  if(!assertWriteAllowed(data.Account, data.SAP)) return alert('Permesso negato: Account/SAP non consentiti.');
+
+  if(key) {
+    update(ref(db, `clienti/${key}`), data).then(() => { bootstrap.Modal.getInstance(document.getElementById('modalEditCliente')).hide(); alert('Cliente aggiornato!'); });
+  } else {
+    push(ref(db, 'clienti'), data).then(() => { bootstrap.Modal.getInstance(document.getElementById('modalEditCliente')).hide(); alert('Nuovo cliente creato!'); });
+  }
+};
+    window.eliminaCliente = (key) => {
+  if(!userCan('del')) return alert('Permesso negato: non puoi cancellare clienti.');
+  const row = (clientiView.find(c => c.firebaseKey === key) || globalClienti.find(c => c.firebaseKey === key));
+  if(!row) return alert('Record non trovato.');
+  if(!assertWriteAllowed(row.Account, row.SAP)) return alert('Permesso negato: record fuori perimetro.');
+  if(confirm('Sei sicuro di voler eliminare questo CLIENTE?')) remove(ref(db, `clienti/${key}`));
+};
     window.nuovoContratto = () => { document.getElementById('formEditContratto').reset(); document.getElementById('conKey').value = ''; new bootstrap.Modal(document.getElementById('modalEditContratto')).show(); };
     window.openEditContratto = (key) => { const con = contrattiView.find(c => c.firebaseKey === key) || globalContratti.find(c => c.firebaseKey === key); if(!con) return; document.getElementById('conKey').value = key; document.getElementById('conSap').value = con.SAP || ''; document.getElementById('conNome').value = con.Nome || ''; document.getElementById('conAccount').value = con.Account || con["Agente_dell'ORDINE"] || ''; document.getElementById('conSistema').value = con.Codice_SISTEMA || ''; document.getElementById('conCodice').value = con.CODICE || ''; document.getElementById('conPagamento').value = con.Pagamento || ''; document.getElementById('conTesto').value = con.TESTO_ORD_ || ''; document.getElementById('conQta').value = con["QUANTITA'"] || ''; document.getElementById('conPasso').value = con.PASSO || ''; document.getElementById('conScadenza').value = con.DATA_SCAD ? con.DATA_SCAD.split('T')[0] : ''; document.getElementById('conValRinnovo').value = parseCurrency(con.VALORE_RINNOVO); document.getElementById('conValMensile').value = parseCurrency(con.VAL_UN_MEN); new bootstrap.Modal(document.getElementById('modalEditContratto')).show(); };
-    window.saveContratto = () => { const key = document.getElementById('conKey').value; const data = { SAP: document.getElementById('conSap').value, Nome: document.getElementById('conNome').value, Account: document.getElementById('conAccount').value, Codice_SISTEMA: document.getElementById('conSistema').value, CODICE: document.getElementById('conCodice').value, Pagamento: document.getElementById('conPagamento').value, TESTO_ORD_: document.getElementById('conTesto').value, "QUANTITA'": document.getElementById('conQta').value, PASSO: document.getElementById('conPasso').value, DATA_SCAD: document.getElementById('conScadenza').value, VALORE_RINNOVO: parseFloat(document.getElementById('conValRinnovo').value) || 0, VAL_UN_MEN: parseFloat(document.getElementById('conValMensile').value) || 0 }; if(key) update(ref(db, `contratti/${key}`), data).then(() => { bootstrap.Modal.getInstance(document.getElementById('modalEditContratto')).hide(); alert("Contratto aggiornato!"); }); else push(ref(db, 'contratti'), data).then(() => { bootstrap.Modal.getInstance(document.getElementById('modalEditContratto')).hide(); alert("Nuovo contratto inserito!"); }); };
-    window.eliminaContratto = (key) => { if(confirm("Sei sicuro di voler eliminare questo CONTRATTO?")) remove(ref(db, `contratti/${key}`)); };
+    window.saveContratto = () => {
+  const key = document.getElementById('conKey').value;
+  const isNew = !key;
+
+  if(isNew && !userCan('insert')) return alert('Permesso negato: non puoi inserire contratti.');
+  if(!isNew && !userCan('update')) return alert('Permesso negato: non puoi modificare contratti.');
+
+  const data = {
+    SAP: document.getElementById('conSap').value,
+    Nome: document.getElementById('conNome').value,
+    Account: _base(document.getElementById('conAccount').value || ''),
+    Codice_SISTEMA: document.getElementById('conSistema').value,
+    CODICE: document.getElementById('conCodice').value,
+    Pagamento: document.getElementById('conPagamento').value,
+    TESTO_ORD_: document.getElementById('conTesto').value,
+    "QUANTITA'": document.getElementById('conQta').value,
+    PASSO: document.getElementById('conPasso').value,
+    DATA_SCAD: document.getElementById('conScadenza').value,
+    VALORE_RINNOVO: parseFloat(document.getElementById('conValRinnovo').value) || 0,
+    VAL_UN_MEN: parseFloat(document.getElementById('conValMensile').value) || 0
+  };
+
+  if(!assertWriteAllowed(data.Account, data.SAP)) return alert('Permesso negato: Account/SAP non consentiti.');
+
+  if(key) {
+    update(ref(db, `contratti/${key}`), data).then(() => { bootstrap.Modal.getInstance(document.getElementById('modalEditContratto')).hide(); alert('Contratto aggiornato!'); });
+  } else {
+    push(ref(db, 'contratti'), data).then(() => { bootstrap.Modal.getInstance(document.getElementById('modalEditContratto')).hide(); alert('Nuovo contratto inserito!'); });
+  }
+};
+    window.eliminaContratto = (key) => {
+  if(!userCan('del')) return alert('Permesso negato: non puoi cancellare contratti.');
+  const row = (contrattiView.find(c => c.firebaseKey === key) || globalContratti.find(c => c.firebaseKey === key));
+  if(!row) return alert('Record non trovato.');
+  const acc = row['Account'] || row["Agente_dell'ORDINE"];
+  if(!assertWriteAllowed(acc, row.SAP)) return alert('Permesso negato: record fuori perimetro.');
+  if(confirm('Sei sicuro di voler eliminare questo CONTRATTO?')) remove(ref(db, `contratti/${key}`));
+};
 
     // --- Fatturato ---
-    window.toggleFatturato = (el, key) => { const isChecked = el.checked; const updates = { isFatturato: isChecked }; if (isChecked) updates.Data_prima_fatt = new Date().toISOString().split('T')[0]; update(ref(db, `fatturato/${key}`), updates).then(() => renderTabelle()).catch(e => alert(e.message)); };
-    window.salvaModificaCella = (el, key, field) => { let val = el.innerText; if(field.includes('WKI') || field.includes('M365') || field.includes('Una_Tantum')) val = parseFloat(val.replace('€','').replace(',','.').trim()) || 0; update(ref(db, `fatturato/${key}`), { [field]: val }).then(() => { el.style.backgroundColor = "#d4edda"; setTimeout(()=>el.style.backgroundColor="",500); if(field.includes('WKI')||field.includes('M365')||field.includes('Una_Tantum')||field.includes('Data_prima_fatt')) renderTabelle(); }).catch(e => alert(e.message)); };
-    window.eliminaRigaFatturato = (key) => { if(confirm("Eliminare riga?")) remove(ref(db, `fatturato/${key}`)); };
+    window.toggleFatturato = (el, key) => {
+  if(!userCan('update')) { el.checked = !el.checked; return alert('Permesso negato: non puoi modificare questo campo.'); }
+  const row = (fatturatoView.find(o => o.firebaseKey === key) || globalFatturato.find(o => o.firebaseKey === key) || {});
+  if(row && !assertWriteAllowed(row.Account, row.SAP)) { el.checked = !el.checked; return alert('Permesso negato: record fuori perimetro.'); }
+  const isChecked = el.checked;
+  const updates = { isFatturato: isChecked };
+  if (isChecked) updates.Data_prima_fatt = new Date().toISOString().split('T')[0];
+  update(ref(db, `fatturato/${key}`), updates).then(() => renderTabelle()).catch(e => alert(e.message));
+};
+    window.salvaModificaCella = (el, key, field) => {
+  if(!userCan('update')) return alert('Permesso negato: non puoi modificare dati.');
+
+  let val = el.innerText;
+  if(field.includes('WKI') || field.includes('M365') || field.includes('Una_Tantum')) {
+    val = parseFloat(val.replace('€','').replace(',','.').trim()) || 0;
+  }
+
+  // Se modifica Account, normalizza e verifica perimetro
+  if(field === 'Account') {
+    val = _base(val || '');
+    const row = (fatturatoView.find(o => o.firebaseKey === key) || globalFatturato.find(o => o.firebaseKey === key) || {});
+    const sap = row.SAP;
+    if(!assertWriteAllowed(val, sap)) {
+      el.style.backgroundColor = '#f8d7da';
+      setTimeout(()=>el.style.backgroundColor='',700);
+      return alert('Permesso negato: Account non consentito.');
+    }
+    el.innerText = val;
+  }
+
+  update(ref(db, `fatturato/${key}`), { [field]: val })
+    .then(() => {
+      el.style.backgroundColor = '#d4edda';
+      setTimeout(()=>el.style.backgroundColor='',500);
+      if(field.includes('WKI') || field.includes('M365') || field.includes('Una_Tantum') || field.includes('Data_prima_fatt')) renderTabelle();
+    })
+    .catch(e => alert(e.message));
+};
+    window.eliminaRigaFatturato = (key) => {
+  if(!userCan('del')) return alert('Permesso negato: non puoi cancellare ordini.');
+  const row = (fatturatoView.find(o => o.firebaseKey === key) || globalFatturato.find(o => o.firebaseKey === key));
+  if(!row) return alert('Record non trovato.');
+  if(!assertWriteAllowed(row.Account, row.SAP)) return alert('Permesso negato: record fuori perimetro.');
+  if(confirm('Eliminare riga?')) remove(ref(db, `fatturato/${key}`));
+};
     window.filterFatturato = (colIndex) => { const table = document.getElementById('tabellaFatturatoReal'); const trs = table.getElementsByTagName("tbody")[0].getElementsByTagName("tr"); const inputs = table.getElementsByTagName("thead")[0].getElementsByTagName("input"); let filters = []; for (let i = 0; i < inputs.length; i++) filters.push({ idx: i + 1, val: inputs[i].value.toUpperCase() }); for (let i = 0; i < trs.length; i++) { let show = true; const tds = trs[i].getElementsByTagName("td"); for (let f of filters) { if (f.val) { if (tds[f.idx]) { const txt = tds[f.idx].textContent || tds[f.idx].innerText; if (txt.toUpperCase().indexOf(f.val) === -1) { show = false; break; }}}} trs[i].style.display = show ? "" : "none"; } window.updateFatturatoTotals(); };
-    window.filterClienti = (colIndex) => { const table = document.getElementById('tabellaClientiReal'); const trs = table.getElementsByTagName("tbody")[0].getElementsByTagName("tr"); const inputs = table.getElementsByTagName("thead")[0].getElementsByTagName("input"); const isAdmin = isCurrentAdmin(); const offset = isAdmin ? 1 : 0; let filters = []; for (let i = 0; i < inputs.length; i++) filters.push({ idx: i + offset, val: inputs[i].value.toUpperCase() }); for (let i = 0; i < trs.length; i++) { let show = true; const tds = trs[i].getElementsByTagName("td"); for (let f of filters) { if (f.val) { if (tds[f.idx]) { const txt = tds[f.idx].textContent || tds[f.idx].innerText; if (txt.toUpperCase().indexOf(f.val) === -1) { show = false; break; }}}} trs[i].style.display = show ? "" : "none"; } };
-    window.filterContratti = (colIndex) => { const table = document.getElementById('tabellaContrattiReal'); const trs = table.getElementsByTagName("tbody")[0].getElementsByTagName("tr"); const inputs = table.getElementsByTagName("thead")[0].getElementsByTagName("input"); const isAdmin = isCurrentAdmin(); const offset = isAdmin ? 1 : 0; let filters = []; for (let i = 0; i < inputs.length; i++) filters.push({ idx: i + offset, val: inputs[i].value.toUpperCase() }); for (let i = 0; i < trs.length; i++) { let show = true; const tds = trs[i].getElementsByTagName("td"); for (let f of filters) { if (f.val) { if (tds[f.idx]) { const txt = tds[f.idx].textContent || tds[f.idx].innerText; if (txt.toUpperCase().indexOf(f.val) === -1) { show = false; break; }}}} trs[i].style.display = show ? "" : "none"; } };
+    window.filterClienti = (colIndex) => { const table = document.getElementById('tabellaClientiReal'); const trs = table.getElementsByTagName("tbody")[0].getElementsByTagName("tr"); const inputs = table.getElementsByTagName("thead")[0].getElementsByTagName("input"); const isAdmin = isCurrentAdmin(); const offset = isCurrentAdmin() ? 1 : 0; let filters = []; for (let i = 0; i < inputs.length; i++) filters.push({ idx: i + offset, val: inputs[i].value.toUpperCase() }); for (let i = 0; i < trs.length; i++) { let show = true; const tds = trs[i].getElementsByTagName("td"); for (let f of filters) { if (f.val) { if (tds[f.idx]) { const txt = tds[f.idx].textContent || tds[f.idx].innerText; if (txt.toUpperCase().indexOf(f.val) === -1) { show = false; break; }}}} trs[i].style.display = show ? "" : "none"; } };
+    window.filterContratti = (colIndex) => { const table = document.getElementById('tabellaContrattiReal'); const trs = table.getElementsByTagName("tbody")[0].getElementsByTagName("tr"); const inputs = table.getElementsByTagName("thead")[0].getElementsByTagName("input"); const isAdmin = isCurrentAdmin(); const offset = isCurrentAdmin() ? 1 : 0; let filters = []; for (let i = 0; i < inputs.length; i++) filters.push({ idx: i + offset, val: inputs[i].value.toUpperCase() }); for (let i = 0; i < trs.length; i++) { let show = true; const tds = trs[i].getElementsByTagName("td"); for (let f of filters) { if (f.val) { if (tds[f.idx]) { const txt = tds[f.idx].textContent || tds[f.idx].innerText; if (txt.toUpperCase().indexOf(f.val) === -1) { show = false; break; }}}} trs[i].style.display = show ? "" : "none"; } };
     window.updateFatturatoTotals = () => { const tbody = document.getElementById('tabellaFatturatoFull'); const trs = tbody.getElementsByTagName('tr'); let sumUna = 0, sumFin = 0, sumWkiAn = 0, sumM365An = 0; for(let tr of trs) { if(tr.style.display !== 'none') { const tds = tr.getElementsByTagName('td'); if(tds.length > 17) { sumUna += parseFloat(tds[10].getAttribute('data-val')) || 0; sumFin += parseFloat(tds[16].getAttribute('data-val')) || 0; sumWkiAn += parseFloat(tds[17].getAttribute('data-val')) || 0; sumM365An += parseFloat(tds[18].getAttribute('data-val')) || 0; } } } document.getElementById('totUna').innerText = sumUna.toLocaleString('it-IT', {minimumFractionDigits: 2}); document.getElementById('totFin').innerText = sumFin.toLocaleString('it-IT', {minimumFractionDigits: 2}); document.getElementById('totWkiAn').innerText = sumWkiAn.toLocaleString('it-IT', {minimumFractionDigits: 2}); document.getElementById('totM365An').innerText = sumM365An.toLocaleString('it-IT', {minimumFractionDigits: 2}); document.getElementById('totGrand').innerText = (sumUna + sumFin).toLocaleString('it-IT', {minimumFractionDigits: 2}); };
 
     window.clearTable = (node) => { if(confirm(`Sei sicuro di voler SVUOTARE la tabella ${node.toUpperCase()}?`)) set(ref(db, node), null).then(() => alert("Tabella svuotata!")); };
@@ -499,13 +816,73 @@
     window.exportExcel = (node) => { let data = []; let name = ""; if(node === 'clienti') { data = globalClienti.map(({firebaseKey, _tempTotale, _tempSistemi, ...rest}) => rest); name = "Clienti.xlsx"; } else if(node === 'contratti') { data = globalContratti.map(({firebaseKey, ...rest}) => rest); name = "Contratti.xlsx"; } else if(node === 'fatturato') { data = globalFatturato.map(({firebaseKey, ...rest}) => rest); name = "Fatturato.xlsx"; } if(data.length === 0) return alert("Nessun dato da esportare."); const ws = XLSX.utils.json_to_sheet(data); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, node); XLSX.writeFile(wb, name); };
     window.valorizzaAccountContratti = () => { if(!confirm("Cercare Account da anagrafica clienti?")) return; let count = 0; const updates = {}; globalContratti.forEach(con => { const match = globalClienti.find(cli => { const sapMatch = cli.SAP && con.SAP && String(cli.SAP).trim() === String(con.SAP).trim(); const nameMatch = cli.Nome && con.Nome && String(cli.Nome).trim().toLowerCase() === String(con.Nome).trim().toLowerCase(); return sapMatch || nameMatch; }); if (match && match.Account && con.Account !== match.Account) { updates[`contratti/${con.firebaseKey}/Account`] = match.Account; count++; } }); if (count > 0) update(ref(db), updates).then(() => alert(`Aggiornati ${count} contratti!`)).catch(e => alert(e.message)); else alert("Nessun aggiornamento necessario."); };
 
-    window.initReportMigrazioni = () => { const select = document.getElementById('reportMigrAccountFilter'); select.innerHTML = ''; if (isCurrentAdmin()) { const allAccounts = new Set(); Object.values(globalUsers).forEach(u => { if(u.acc && u.acc !== 'ADMIN') allAccounts.add(u.acc.trim()); }); globalMigrazioni.forEach(m => { if(m.Account) allAccounts.add(m.Account.trim()); }); Array.from(allAccounts).sort().forEach(acc => { select.innerHTML += `<option value="${acc}">${acc}</option>`; }); select.multiple = true; select.disabled = false; } else { const myAcc = _base(currentAccountName); select.innerHTML = `<option value="${myAcc}" selected>${myAcc}</option>`; select.multiple = false; select.disabled = true; } window.generateMigrationReport(); };
+    window.initReportMigrazioni = () => {
+  const select = document.getElementById('reportMigrAccountFilter');
+  select.innerHTML = '';
+
+  if (isCurrentAdmin()) {
+    const allAccounts = new Set();
+    Object.values(globalUsers).forEach(u => { if(u.acc && u.acc !== 'ADMIN') allAccounts.add(u.acc.trim()); });
+    globalMigrazioni.forEach(m => { if(m.Account) allAccounts.add(m.Account.trim()); });
+    Array.from(allAccounts).sort().forEach(acc => { select.innerHTML += `<option value="${acc}">${acc}</option>`; });
+    select.multiple = true;
+    select.disabled = false;
+  } else {
+    const p = getCurrentPolicy();
+    if(p && Array.isArray(p.accounts) && p.accounts.length > 0) {
+      // Per utenti con policy: mostra solo gli account consentiti e permette la selezione multipla tra essi
+      p.accounts.map(_base).filter(Boolean).forEach(acc => {
+        select.innerHTML += `<option value="${acc}" selected>${acc}</option>`;
+      });
+      select.multiple = true;
+      select.disabled = false;
+    } else {
+      const myAcc = _base(currentAccountName);
+      select.innerHTML = `<option value="${myAcc}" selected>${myAcc}</option>`;
+      select.multiple = false;
+      select.disabled = true;
+    }
+  }
+
+  window.generateMigrationReport();
+};
     window.generateMigrationReport = () => { const tbody = document.getElementById('tbodyReportMigrazioni'); tbody.innerHTML = ''; const select = document.getElementById('reportMigrAccountFilter'); let targetAccounts = Array.from(select.selectedOptions).map(opt => opt.value); if(targetAccounts.length === 0) targetAccounts = Array.from(select.options).map(o => o.value); const reportData = {}; targetAccounts.forEach(acc => { reportData[_base(acc)] = Array.from({length: 12}, () => ({studi: 0, utenti: 0})); }); const src = isCurrentAdmin() ? globalMigrazioni : migrazioniView; src.forEach(m => { const stato = (m.Stato || '').toLowerCase(); if((stato === 'prevista' || stato === 'pianificata') && m.Data_Prevista && m.Account) { const accUpper = _base(m.Account); if(reportData[accUpper]) { const date = new Date(m.Data_Prevista); if(!isNaN(date.getTime())) { const month = date.getMonth(); reportData[accUpper][month].studi += 1; reportData[accUpper][month].utenti += (parseInt(m.Utenti_Migrazione, 10) || 0); } } } }); targetAccounts.forEach(accDisplayName => { const upperKey = _base(accDisplayName); const data = reportData[upperKey]; if(!data) return; let row = `<tr><td class="fw-bold bg-light text-start ps-3" style="position:sticky; left:0; z-index:10; border-right:2px solid #dee2e6;">${accDisplayName}</td>`; let tS=0, tU=0; data.forEach(m => { tS+=m.studi; tU+=m.utenti; row += `<td class="${m.studi===0?'report-cell-warn':''}" style="${m.studi===0?'color:#ccc':''}">${m.studi}</td><td class="border-end ${m.utenti===0?'report-cell-warn':''}" style="${m.utenti===0?'color:#ccc':''}">${m.utenti}</td>`; }); row += `<td class="bg-success bg-opacity-25 fw-bold text-dark border-start border-dark">${tS}</td><td class="bg-success bg-opacity-25 fw-bold text-dark">${tU}</td></tr>`; tbody.innerHTML += row; }); if(targetAccounts.length === 0) tbody.innerHTML = '<tr><td colspan="27" class="text-center p-3">Nessun account trovato.</td></tr>'; };
 
     // --- Dropdowns e liste ---
-    const _initDrops = () => { const dlAcc = document.getElementById('listAccounts'); dlAcc.innerHTML = ''; if (isCurrentAdmin()) { Object.values(globalUsers).forEach(u => { if(u.acc && u.acc !== "ADMIN") dlAcc.innerHTML += `<option value="${u.acc}">`; }); } else { dlAcc.innerHTML = `<option value="${_base(currentAccountName)}">`; } const dlDesc = document.getElementById('listDesc'); dlDesc.innerHTML = ''; const listaDescrizioni = ["NOTAIO NEXT", "FORMAZIONE NOTAIO NEXT", "PROGETTO VISIBILITA'", "NMW ESSENTIAL + E-SERVICES", "GDPR", "KLEOS", "APERTURA AREA GN NOTAIO NEXT", "UPGRADE E-FATTURA", "INTERVENTO FUORI CONTRATTO", "UTENTE AGGIUNTIVO NEXT", "UPGRADE M365 DA BASIC A STANDARD", "UTENTE AGGIUNTIVO SAAS", "NEXT CONNECTOR", "CORSO ONLINE ANTIRICICLAGGIO", "MICROSOFT 365 STANDARD", "CIS SUCCESSIONI", "KYC ANTIRICICLAGGIO", "OAPDF SUITE", "RINNOVO PATTO DIGITALE", "SPAZIO AGGIUNTIVO SAAS", "ATTO INFORMATICO", "KIT SERVIZIO ANTIRICICLAGGIO", "ARCHIVIAZIONE OTTICA", "UTENTE AGGIUNTIVO SUITE NOTARO C/S", "FALLITI PLUS", "UPGRADE DA ESSENTIAL A PRO", "SCRIPT IN KLEOS", "SUITE NOTARO NEW", "BUNDLE KYC - FALLITI GN", "AFFIANCAMENTO ATTO INFORMATICO", "INSTALLAZIONE SUITE NOTARO C/S", "ARGILLA IUS GN", "E-FATTURA GN", "FALLITI PLUS GN", "KYC ANTIRICLAGGIO GN", "NMW ESSENTIAL GN", "RICARICA KYC ANTIRICICLAGGIO", "UTENTE AGGIUNTIVO NEXT GN", "CORSO SUCCESSIONI TELEMATICHE", "ARGILLA IUS", "KYC ANTIRICLAGGIO", "UNIFICAZIONE AREA NEXT", "UPGRADE M365 DA BASIC A STANDARD GN", "KYC TITOLARE EFFETTIVO", "CONGUAGLIO CANONE NEXT", "FORMAZIONE SUITE NOTARO", "REINSTALLAZIONE SAE SU SERVER", "UTENTE AGGIUNTIVO KLEOS", "SUITE NOTARO SAAS", "IMPORT DATI", "MODULO SUCCESSIONI SUITE NOTARO", "UTENTE SUCCESSIONI NOTAIO NEXT", "IMPORT DATI NEXT", "CORSO PRATICHE CAMERALI", "UTENTE AGGIUNTIVO AFC", "ARCHIVIAZIONE POSTA IN LOCALE"]; listaDescrizioni.forEach(d => dlDesc.innerHTML += `<option value="${d}">`); const selSt = document.getElementById('ordStato'); selSt.innerHTML = ''; ["Evaso", "da evadere", "Sospeso", "Parziale"].forEach(s => selSt.innerHTML += `<option value="${s}">${s}</option>`); const dlCli = document.getElementById('clientListOptions'); dlCli.innerHTML = ''; clientiView.forEach(c => { if(c.SAP && c.Nome) dlCli.innerHTML += `<option value="${c.SAP || ''} - ${c.Nome || ''}">`; }); };
+    const _initDrops = () => {
+  const dlAcc = document.getElementById('listAccounts');
+  dlAcc.innerHTML = '';
 
-    function renderTabelle() { _initDrops(); const isAdmin = isCurrentAdmin(); const colConfigs = [{ label: "SAP", key: "SAP" }, { label: "Nome", key: "Nome" }, { label: "PIVA", key: "PIVA" }, { label: "Cod. Fiscale", key: "Codice_Fiscale" }, { label: "Account", key: "Account" }, { label: "Via", key: "Via_e_numero" }, { label: "Città", key: "Città" }, { label: "Prov", key: "Prov" }, { label: "Telefono", key: "Telefono" }, { label: "Email", key: "e_mail" }, { label: "Note", key: "Note" }]; let th = '<tr>'; if(isAdmin) th += '<th class="bg-secondary text-white">Az.</th>'; colConfigs.forEach((conf, index) => { th += `<th>${conf.label}<input type="text" class="header-filter" onkeyup="window.filterClienti(${index})"></th>`; }); th += '</tr>'; document.getElementById('theadClientiFull').innerHTML = th; let tbodyHtml = ''; clientiView.forEach(c => { tbodyHtml += '<tr>'; if(isAdmin) tbodyHtml += `<td style="white-space:nowrap;"><i class="bi bi-pencil-square text-primary me-2" style="cursor:pointer" onclick="window.openEditCliente('${c.firebaseKey}')"></i><i class="bi bi-trash text-danger" style="cursor:pointer" onclick="window.eliminaCliente('${c.firebaseKey}')"></i></td>`; colConfigs.forEach(conf => { let val = (conf.key === 'Codice_Fiscale') ? getCodiceFiscale(c) : (c[conf.key] ?? ''); tbodyHtml += `<td>${val}</td>`; }); tbodyHtml += '</tr>'; }); document.getElementById('tabellaClientiFull').innerHTML = tbodyHtml; const contractCols = ["ACCOUNT", "SAP", "NOME CLIENTE", "CODICE SISTEMA", "VALORE RINNOVO", "VAL. UNIT. MENS.", "TESTO ORDINE", "Q.tà", "PASSO", "DATA SCADENZA", "PAGAMENTO", "CODICE"]; let htmlConHead = '<tr>'; if(isAdmin) htmlConHead += '<th class="bg-secondary text-white">Az.</th>'; contractCols.forEach((colName, index) => { htmlConHead += `<th>${colName}<input type="text" class="header-filter" onkeyup="window.filterContratti(${index})"></th>`; }); htmlConHead += '</tr>'; document.getElementById('theadContrattiFull').innerHTML = htmlConHead; let htmlCon = ''; contrattiView.forEach(c => { const valMen = parseFloat(c.VAL_UN_MEN || 0).toLocaleString('it-IT', {minimumFractionDigits: 2, maximumFractionDigits: 2}); let dataFmt = c.DATA_SCAD; if(c.DATA_SCAD) { const d = new Date(c.DATA_SCAD); if(!isNaN(d.getTime())) dataFmt = d.toLocaleDateString('it-IT'); } htmlCon += `<tr>`; if(isAdmin) htmlCon += `<td style="white-space:nowrap;"><i class="bi bi-pencil-square text-primary me-2" style="cursor:pointer" onclick="window.openEditContratto('${c.firebaseKey}')"></i><i class="bi bi-trash text-danger" style="cursor:pointer" onclick="window.eliminaContratto('${c.firebaseKey}')"></i></td>`; htmlCon += `<td>${c["Account"]||c["Agente_dell'ORDINE"]||''}</td><td>${c.SAP||''}</td><td>${c.Nome||''}</td><td>${c.Codice_SISTEMA||''}</td><td>${c.VALORE_RINNOVO||''}</td><td>${valMen}</td><td>${c.TESTO_ORD_||''}</td><td>${c["QUANTITA'"]||''}</td><td>${c.PASSO||''}</td><td>${dataFmt}</td><td>${c.Pagamento||''}</td><td>${c.CODICE||''}</td></tr>`; }); document.getElementById('tabellaContrattiFull').innerHTML = htmlCon; const tbFatt = document.getElementById('tabellaFatturatoFull'); tbFatt.innerHTML = ''; fatturatoView.forEach(ord => { let mesi = 0; if(ord.Data_prima_fatt) { const dt = new Date(ord.Data_prima_fatt); if(!isNaN(dt)) mesi = Math.max(0, Math.min(12, 13 - (dt.getMonth()+1))); } const wkiMese = parseFloat(ord.WKI_m || ord.Can_WKI_mese || 0); const m365Mese = parseFloat(ord.M365_m || ord.M365_mese || 0); const unaTantum = parseFloat(ord.Una_Tantum || 0); const wkiTot = wkiMese * mesi; const m365Tot = m365Mese * mesi; const finanziario = (wkiMese + m365Mese) * 12; const k = ord.firebaseKey; const checkedAttr = ord.isFatturato ? 'checked' : ''; tbFatt.innerHTML += `<tr><td style="white-space:nowrap;"><i class="bi bi-pencil-square text-primary me-2" style="cursor:pointer" onclick="window.openEditOrdine('${k}')"></i><i class="bi bi-trash text-danger" style="cursor:pointer" onclick="window.eliminaRigaFatturato('${k}')"></i></td><td contenteditable="true" class="editable-cell" onblur="window.salvaModificaCella(this,'${k}','Data_ordine')">${ord.Data_ordine||''}</td><td>${ord.SAP||''}</td><td>${ord.Cliente||''}</td><td contenteditable="true" class="editable-cell" onblur="window.salvaModificaCella(this,'${k}','Account')">${ord.Account||''}</td><td contenteditable="true" class="editable-cell fw-bold text-danger" onblur="window.salvaModificaCella(this,'${k}','Ordine_AP')">${ord.Ordine_AP||''}</td><td contenteditable="true" class="editable-cell" onblur="window.salvaModificaCella(this,'${k}','Descrizione_Ordine')">${ord.Descrizione_Ordine||''}</td><td contenteditable="true" class="editable-cell small" onblur="window.salvaModificaCella(this,'${k}','Note')">${ord.Note||''}</td><td contenteditable="true" class="editable-cell text-end" onblur="window.salvaModificaCella(this,'${k}','WKI_m')">${wkiMese}</td><td contenteditable="true" class="editable-cell text-end" onblur="window.salvaModificaCella(this,'${k}','M365_m')">${m365Mese}</td><td contenteditable="true" class="editable-cell text-end" data-val="${unaTantum}" onblur="window.salvaModificaCella(this,'${k}','Una_Tantum')">${unaTantum.toFixed(2)}</td><td contenteditable="true" class="editable-cell" onblur="window.salvaModificaCella(this,'${k}','Finanaziata')">${ord.Finanaziata||''}</td><td contenteditable="true" class="editable-cell" onblur="window.salvaModificaCella(this,'${k}','Stato')">${ord.Stato||''}</td><td class="text-center align-middle"><input type="checkbox" class="form-check-input border-secondary" ${checkedAttr} onchange="window.toggleFatturato(this, '${k}')" style="transform: scale(1.2);"></td><td contenteditable="true" class="editable-cell fw-bold" onblur="window.salvaModificaCella(this,'${k}','Data_prima_fatt')">${ord.Data_prima_fatt||''}</td><td class="bg-light text-center fw-bold">${mesi}</td><td class="bg-light text-end small" data-val="${finanziario}">${finanziario.toFixed(2)}</td><td class="bg-light text-end small" data-val="${wkiTot}">${wkiTot.toFixed(2)}</td><td class="bg-light text-end small" data-val="${m365Tot}">${m365Tot.toFixed(2)}</td></tr>`; }); window.updateFatturatoTotals(); renderTabellaMigrazioni(); }
+  if (isCurrentAdmin()) {
+    Object.values(globalUsers).forEach(u => { if(u.acc && u.acc !== "ADMIN") dlAcc.innerHTML += `<option value="${u.acc}">`; });
+  } else {
+    const p = getCurrentPolicy();
+    if(p && Array.isArray(p.accounts) && p.accounts.length > 0) {
+      // Mostra SOLO gli account ammessi dalla policy
+      p.accounts.forEach(a => {
+        const v = _base(a);
+        if(v) dlAcc.innerHTML += `<option value="${v}"></option>`;
+      });
+    } else {
+      dlAcc.innerHTML = `<option value="${_base(currentAccountName)}">`;
+    }
+  }
+
+  const dlDesc = document.getElementById('listDesc');
+  dlDesc.innerHTML = '';
+  const listaDescrizioni = ["NOTAIO NEXT", "FORMAZIONE NOTAIO NEXT", "PROGETTO VISIBILITA'", "NMW ESSENTIAL + E-SERVICES", "GDPR", "KLEOS", "APERTURA AREA GN NOTAIO NEXT", "UPGRADE E-FATTURA", "INTERVENTO FUORI CONTRATTO", "UTENTE AGGIUNTIVO NEXT", "UPGRADE M365 DA BASIC A STANDARD", "UTENTE AGGIUNTIVO SAAS", "NEXT CONNECTOR", "CORSO ONLINE ANTIRICICLAGGIO", "MICROSOFT 365 STANDARD", "CIS SUCCESSIONI", "KYC ANTIRICICLAGGIO", "OAPDF SUITE", "RINNOVO PATTO DIGITALE", "SPAZIO AGGIUNTIVO SAAS", "ATTO INFORMATICO", "KIT SERVIZIO ANTIRICICLAGGIO", "ARCHIVIAZIONE OTTICA", "UTENTE AGGIUNTIVO SUITE NOTARO C/S", "FALLITI PLUS", "UPGRADE DA ESSENTIAL A PRO", "SCRIPT IN KLEOS", "SUITE NOTARO NEW", "BUNDLE KYC - FALLITI GN", "AFFIANCAMENTO ATTO INFORMATICO", "INSTALLAZIONE SUITE NOTARO C/S", "ARGILLA IUS GN", "E-FATTURA GN", "FALLITI PLUS GN", "KYC ANTIRICLAGGIO GN", "NMW ESSENTIAL GN", "RICARICA KYC ANTIRICICLAGGIO", "UTENTE AGGIUNTIVO NEXT GN", "CORSO SUCCESSIONI TELEMATICHE", "ARGILLA IUS", "KYC ANTIRICLAGGIO", "UNIFICAZIONE AREA NEXT", "UPGRADE M365 DA BASIC A STANDARD GN", "KYC TITOLARE EFFETTIVO", "CONGUAGLIO CANONE NEXT", "FORMAZIONE SUITE NOTARO", "REINSTALLAZIONE SAE SU SERVER", "UTENTE AGGIUNTIVO KLEOS", "SUITE NOTARO SAAS", "IMPORT DATI", "MODULO SUCCESSIONI SUITE NOTARO", "UTENTE SUCCESSIONI NOTAIO NEXT", "IMPORT DATI NEXT", "CORSO PRATICHE CAMERALI", "UTENTE AGGIUNTIVO AFC", "ARCHIVIAZIONE POSTA IN LOCALE"];
+  listaDescrizioni.forEach(d => dlDesc.innerHTML += `<option value="${d}">`);
+
+  const selSt = document.getElementById('ordStato');
+  selSt.innerHTML = '';
+  ["Evaso", "da evadere", "Sospeso", "Parziale"].forEach(s => selSt.innerHTML += `<option value="${s}">${s}</option>`);
+
+  const dlCli = document.getElementById('clientListOptions');
+  dlCli.innerHTML = '';
+  clientiView.forEach(c => { if(c.SAP && c.Nome) dlCli.innerHTML += `<option value="${c.SAP || ''} - ${c.Nome || ''}">`; });
+};
+
+    function renderTabelle() { _initDrops(); const isAdmin = isCurrentAdmin(); const canEditMaster = hasAzioniColumn(); const canEditLists = isCurrentAdmin(); const colConfigs = [{ label: "SAP", key: "SAP" }, { label: "Nome", key: "Nome" }, { label: "PIVA", key: "PIVA" }, { label: "Cod. Fiscale", key: "Codice_Fiscale" }, { label: "Account", key: "Account" }, { label: "Via", key: "Via_e_numero" }, { label: "Città", key: "Città" }, { label: "Prov", key: "Prov" }, { label: "Telefono", key: "Telefono" }, { label: "Email", key: "e_mail" }, { label: "Note", key: "Note" }]; let th = '<tr>'; if(canEditLists) th += '<th class="bg-secondary text-white">Az.</th>'; colConfigs.forEach((conf, index) => { th += `<th>${conf.label}<input type="text" class="header-filter" onkeyup="window.filterClienti(${index})"></th>`; }); th += '</tr>'; document.getElementById('theadClientiFull').innerHTML = th; let tbodyHtml = ''; clientiView.forEach(c => { tbodyHtml += '<tr>'; if(canEditLists) tbodyHtml += `<td style="white-space:nowrap;"><i class="bi bi-pencil-square text-primary me-2" style="cursor:pointer" onclick="window.openEditCliente('${c.firebaseKey}')"></i>${userCan('del') ? `<i class="bi bi-trash text-danger" style="cursor:pointer" onclick="window.eliminaCliente('${c.firebaseKey}')"></i>` : ''}</td>`; colConfigs.forEach(conf => { let val = (conf.key === 'Codice_Fiscale') ? getCodiceFiscale(c) : (c[conf.key] ?? ''); tbodyHtml += `<td>${val}</td>`; }); tbodyHtml += '</tr>'; }); document.getElementById('tabellaClientiFull').innerHTML = tbodyHtml; const contractCols = ["ACCOUNT", "SAP", "NOME CLIENTE", "CODICE SISTEMA", "VALORE RINNOVO", "VAL. UNIT. MENS.", "TESTO ORDINE", "Q.tà", "PASSO", "DATA SCADENZA", "PAGAMENTO", "CODICE"]; let htmlConHead = '<tr>'; if(canEditLists) htmlConHead += '<th class="bg-secondary text-white">Az.</th>'; contractCols.forEach((colName, index) => { htmlConHead += `<th>${colName}<input type="text" class="header-filter" onkeyup="window.filterContratti(${index})"></th>`; }); htmlConHead += '</tr>'; document.getElementById('theadContrattiFull').innerHTML = htmlConHead; let htmlCon = ''; contrattiView.forEach(c => { const valMen = parseFloat(c.VAL_UN_MEN || 0).toLocaleString('it-IT', {minimumFractionDigits: 2, maximumFractionDigits: 2}); let dataFmt = c.DATA_SCAD; if(c.DATA_SCAD) { const d = new Date(c.DATA_SCAD); if(!isNaN(d.getTime())) dataFmt = d.toLocaleDateString('it-IT'); } htmlCon += `<tr>`; if(canEditLists) htmlCon += `<td style="white-space:nowrap;"><i class="bi bi-pencil-square text-primary me-2" style="cursor:pointer" onclick="window.openEditContratto('${c.firebaseKey}')"></i>${userCan('del') ? `<i class="bi bi-trash text-danger" style="cursor:pointer" onclick="window.eliminaContratto('${c.firebaseKey}')"></i>` : ''}</td>`; htmlCon += `<td>${c["Account"]||c["Agente_dell'ORDINE"]||''}</td><td>${c.SAP||''}</td><td>${c.Nome||''}</td><td>${c.Codice_SISTEMA||''}</td><td>${c.VALORE_RINNOVO||''}</td><td>${valMen}</td><td>${c.TESTO_ORD_||''}</td><td>${c["QUANTITA'"]||''}</td><td>${c.PASSO||''}</td><td>${dataFmt}</td><td>${c.Pagamento||''}</td><td>${c.CODICE||''}</td></tr>`; }); document.getElementById('tabellaContrattiFull').innerHTML = htmlCon; const tbFatt = document.getElementById('tabellaFatturatoFull'); tbFatt.innerHTML = ''; fatturatoView.forEach(ord => { let mesi = 0; if(ord.Data_prima_fatt) { const dt = new Date(ord.Data_prima_fatt); if(!isNaN(dt)) mesi = Math.max(0, Math.min(12, 13 - (dt.getMonth()+1))); } const wkiMese = parseFloat(ord.WKI_m || ord.Can_WKI_mese || 0); const m365Mese = parseFloat(ord.M365_m || ord.M365_mese || 0); const unaTantum = parseFloat(ord.Una_Tantum || 0); const wkiTot = wkiMese * mesi; const m365Tot = m365Mese * mesi; const finanziario = (wkiMese + m365Mese) * 12; const k = ord.firebaseKey; const checkedAttr = ord.isFatturato ? 'checked' : ''; tbFatt.innerHTML += `<tr><td style="white-space:nowrap;"><i class="bi bi-pencil-square text-primary me-2" style="cursor:pointer" onclick="window.openEditOrdine('${k}')"></i>${userCan('del') ? `<i class="bi bi-trash text-danger" style="cursor:pointer" onclick="window.eliminaRigaFatturato('${k}')"></i>` : ''}</td><td contenteditable="true" class="editable-cell" onblur="window.salvaModificaCella(this,'${k}','Data_ordine')">${ord.Data_ordine||''}</td><td>${ord.SAP||''}</td><td>${ord.Cliente||''}</td><td contenteditable="true" class="editable-cell" onblur="window.salvaModificaCella(this,'${k}','Account')">${ord.Account||''}</td><td contenteditable="true" class="editable-cell fw-bold text-danger" onblur="window.salvaModificaCella(this,'${k}','Ordine_AP')">${ord.Ordine_AP||''}</td><td contenteditable="true" class="editable-cell" onblur="window.salvaModificaCella(this,'${k}','Descrizione_Ordine')">${ord.Descrizione_Ordine||''}</td><td contenteditable="true" class="editable-cell small" onblur="window.salvaModificaCella(this,'${k}','Note')">${ord.Note||''}</td><td contenteditable="true" class="editable-cell text-end" onblur="window.salvaModificaCella(this,'${k}','WKI_m')">${wkiMese}</td><td contenteditable="true" class="editable-cell text-end" onblur="window.salvaModificaCella(this,'${k}','M365_m')">${m365Mese}</td><td contenteditable="true" class="editable-cell text-end" data-val="${unaTantum}" onblur="window.salvaModificaCella(this,'${k}','Una_Tantum')">${unaTantum.toFixed(2)}</td><td contenteditable="true" class="editable-cell" onblur="window.salvaModificaCella(this,'${k}','Finanaziata')">${ord.Finanaziata||''}</td><td contenteditable="true" class="editable-cell" onblur="window.salvaModificaCella(this,'${k}','Stato')">${ord.Stato||''}</td><td class="text-center align-middle"><input type="checkbox" class="form-check-input border-secondary" ${checkedAttr} onchange="window.toggleFatturato(this, '${k}')" style="transform: scale(1.2);"></td><td contenteditable="true" class="editable-cell fw-bold" onblur="window.salvaModificaCella(this,'${k}','Data_prima_fatt')">${ord.Data_prima_fatt||''}</td><td class="bg-light text-center fw-bold">${mesi}</td><td class="bg-light text-end small" data-val="${finanziario}">${finanziario.toFixed(2)}</td><td class="bg-light text-end small" data-val="${wkiTot}">${wkiTot.toFixed(2)}</td><td class="bg-light text-end small" data-val="${m365Tot}">${m365Tot.toFixed(2)}</td></tr>`; }); window.updateFatturatoTotals(); renderTabellaMigrazioni(); }
 
     const usersRef = ref(db, 'users'); onValue(usersRef, (snap) => { document.getElementById('criticalErrorAlert').style.display = 'none'; globalUsers = snap.val() || {}; if(auth.currentUser) checkUserMapping(auth.currentUser); }, (error) => { console.error("Errore lettura Users:", error); document.getElementById('criticalErrorAlert').style.display = 'block'; });
     onValue(ref(db, '/'), (snap) => { const data = snap.val() || {}; globalClienti = data.clienti ? Object.entries(data.clienti).map(([k,v])=>({...v, firebaseKey: k})) : []; globalContratti = data.contratti ? Object.entries(data.contratti).map(([k,v])=>({...v, firebaseKey: k})) : []; globalFatturato = data.fatturato ? Object.entries(data.fatturato).map(([k,v])=>({...v, firebaseKey: k})) : []; globalMigrazioni = data.migrazioni ? Object.entries(data.migrazioni).map(([k,v])=>({...v, firebaseKey: k})) : []; document.getElementById('dbStatus').innerText = `Online: ${globalClienti.length} Cli, ${globalFatturato.length} Ord, ${globalMigrazioni.length} Migr.`; if (currentUserEmail) { rebuildVisibilityContext(); renderTabelle(); } });
