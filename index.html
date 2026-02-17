@@ -181,7 +181,7 @@
 
         <main class="main-content">
             <div id="view-home" class="view-section active-view">
-                <h3 class="mb-4">Scheda Cliente & Nuovo Ordine</h3>
+                <h3 class="mb-4">Scheda Cliente e Nuovo Ordine/Trattativa</h3>
                 <div class="card mb-4 border-primary shadow-sm">
                     <div class="card-body bg-light">
                         <div class="row align-items-end">
@@ -378,6 +378,12 @@
 // Permessi:
 // - Maura: può VEDERE e MODIFICARE, ma NON può INSERIRE / CANCELLARE.
 // - Federico / Matteo / Silvio: possono VEDERE, MODIFICARE, INSERIRE e CANCELLARE.
+// === GRUPPO VISIBILITÀ CONDIVISA (solo VISUALIZZAZIONE) ===
+// Questi account possono vedere reciprocamente Clienti/Contratti/Ordini/Migrazioni in tutte le schede,
+// ma possono SCRIVERE solo sul proprio Account.
+const SHARED_VIEW_ACCOUNTS = ['FEDERICO ROSSI', 'MANUEL MANCHI', 'GIOVANNI VITTI'];
+const isSharedViewUser = () => SHARED_VIEW_ACCOUNTS.includes(_base(currentAccountName || ''));
+
 const USER_POLICIES = {
   "maura.capitanio@wolterskluwer.com": {
     accounts: ["BRUGNONE - CAPITANIO", "MITRO - CAPITANIO", "POZZOLI - CAPITANIO"],
@@ -436,7 +442,11 @@ const buildCurrentAccountKeys = () => {
     return;
   }
 
-  // Default (comportamento precedente)
+  // Shared view group: consente visibilità incrociata tra account specifici
+ if(isSharedViewUser()) {
+   SHARED_VIEW_ACCOUNTS.forEach(addAccountToKeySet);
+ }
+ // Default (comportamento precedente)
   if(currentAccountName) addAccountToKeySet(currentAccountName);
   if(currentUserEmail) addAccountToKeySet(accountFromEmail(currentUserEmail));
 };
@@ -444,9 +454,28 @@ const buildCurrentAccountKeys = () => {
 
 // --- Validazione scrittura su base ACCOUNT (coerente con le policy) ---
 const canWriteAccount = (accValue) => {
-  if(isCurrentAdmin()) return true;
-  if(!accValue) return false;
-  return currentAccountKeys.has(accountKey(accValue));
+ if(isCurrentAdmin()) return true;
+ if(!accValue) return false;
+ // Per i membri del gruppo di visibilità condivisa: scrittura consentita SOLO sul proprio account
+ if(isSharedViewUser()) {
+   const localKeys = new Set();
+   const addLocal = (name) => {
+     if(!name) return;
+     const k1 = accountKey(name);
+     if(k1) localKeys.add(k1);
+     const t = _nameTokens(name);
+     if(t.length >= 2) {
+       const inv = `${t[t.length-1]} ${t.slice(0,-1).join(' ')}`.trim();
+       const k2 = accountKey(inv);
+       if(k2) localKeys.add(k2);
+     }
+   };
+   if(currentAccountName) addLocal(currentAccountName);
+   if(currentUserEmail) addLocal(accountFromEmail(currentUserEmail));
+   return localKeys.has(accountKey(accValue));
+ }
+ // Regola standard: scrittura solo entro perimetro account consentiti
+ return currentAccountKeys.has(accountKey(accValue));
 };
 
 const assertWriteAllowed = (accValue, sapValue) => {
@@ -953,7 +982,7 @@ const hasAzioniColumn = () => {
 
   const selSt = document.getElementById('ordStato');
   selSt.innerHTML = '';
-  ["Offerta", "Evaso", "Da Evadere", "Sospeso"].forEach(s => selSt.innerHTML += `<option value="${s}">${s}</option>`);
+  ["Offerta Presentata", "Offerta Sospesa", "Ordine da Evadere", "Ordine Evaso", "Ordine Sospeso", "Altro"].forEach(s => selSt.innerHTML += `<option value="${s}">${s}</option>`);
 
   const dlCli = document.getElementById('clientListOptions');
   dlCli.innerHTML = '';
