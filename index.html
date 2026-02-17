@@ -102,7 +102,7 @@
         </div>
     </div>
 
-    <div class="modal fade" id="modalEditOrdine" tabindex="-1"><div class="modal-dialog modal-lg"><div class="modal-content"><div class="modal-header bg-warning text-dark"><h5 class="modal-title fw-bold"><i class="bi bi-pencil-square"></i> Modifica Ordine</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body bg-light"><form id="formEditOrdine"><input type="hidden" id="editKey"><div class="row g-2 mb-3"><div class="col-md-3 col-12"><label class="small fw-bold">Data Ordine</label><input type="date" id="editData" class="form-control"></div><div class="col-md-3 col-12"><label class="small fw-bold">SAP</label><input type="text" id="editSap" class="form-control"></div><div class="col-md-6 col-12"><label class="small fw-bold">Cliente</label><input type="text" id="editCliente" class="form-control"></div></div><div class="row g-2 mb-3"><div class="col-md-4 col-12"><label class="small fw-bold">Account</label><input type="text" id="editAccount" list="listAccounts" class="form-control"></div><div class="col-md-4 col-12"><label class="small fw-bold text-danger">Ordine AP</label><input type="text" id="editOrdineAP" class="form-control"></div><div class="col-md-4 col-12"><label class="small fw-bold">Stato</label><select id="editStato" class="form-select"></select></div><div class="col-md-2 col-12"><label class="small fw-bold">Successo %</label><input type="number" id="editSuccesso" class="form-control" min="0" max="100" step="1" placeholder="%"></div></div><div class="row g-2 mb-3"><div class="col-md-5 col-12"><label class="small fw-bold">Descrizione</label><input type="text" id="editDesc" list="listDesc" class="form-control"></div><div class="col-md-4 col-12"><label class="small fw-bold">Link Teams offerta/ordine</label><input type="url" id="editTeamsLink" class="form-control" placeholder="Incolla link Teams/SharePoint..."></div><div class="col-md-3 col-12"><label class="small fw-bold">Note</label><input type="text" id="editNote" class="form-control"></div></div><div class="row g-2 mb-3 align-items-end"><div class="col-md-3 col-6"><label class="small fw-bold">WKI_m</label><input type="number" step="0.01" id="editWki" class="form-control"></div><div class="col-md-3 col-6"><label class="small fw-bold">M365_m</label><input type="number" step="0.01" id="editM365" class="form-control"></div><div class="col-md-3 col-6"><label class="small fw-bold">Una Tantum</label><input type="number" step="0.01" id="editUna" class="form-control"></div><div class="col-md-3 col-6"><label class="small fw-bold">1° Fattura</label><input type="date" id="editDataFatt" class="form-control"></div></div></form></div><div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annulla</button><button type="button" class="btn btn-primary fw-bold" onclick="window.saveEditOrdine()">SALVA MODIFICHE</button></div></div></div></div>
+    <div class="modal fade" id="modalEditOrdine" tabindex="-1"><div class="modal-dialog modal-lg"><div class="modal-content"><div class="modal-header bg-warning text-dark"><h5 class="modal-title fw-bold"><i class="bi bi-pencil-square"></i> Modifica Ordine/Trattativa</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body bg-light"><form id="formEditOrdine"><input type="hidden" id="editKey"><div class="row g-2 mb-3"><div class="col-md-3 col-12"><label class="small fw-bold">Data Ordine</label><input type="date" id="editData" class="form-control"></div><div class="col-md-3 col-12"><label class="small fw-bold">SAP</label><input type="text" id="editSap" class="form-control"></div><div class="col-md-6 col-12"><label class="small fw-bold">Cliente</label><input type="text" id="editCliente" class="form-control"></div></div><div class="row g-2 mb-3"><div class="col-md-4 col-12"><label class="small fw-bold">Account</label><input type="text" id="editAccount" list="listAccounts" class="form-control"></div><div class="col-md-4 col-12"><label class="small fw-bold text-danger">Ordine AP</label><input type="text" id="editOrdineAP" class="form-control"></div><div class="col-md-4 col-12"><label class="small fw-bold">Stato</label><select id="editStato" class="form-select"></select></div><div class="col-md-2 col-12"><label class="small fw-bold">Successo %</label><input type="number" id="editSuccesso" class="form-control" min="0" max="100" step="1" placeholder="%"></div></div><div class="row g-2 mb-3"><div class="col-md-5 col-12"><label class="small fw-bold">Descrizione</label><input type="text" id="editDesc" list="listDesc" class="form-control"></div><div class="col-md-4 col-12"><label class="small fw-bold">Link Teams offerta/ordine</label><input type="url" id="editTeamsLink" class="form-control" placeholder="Incolla link Teams/SharePoint..."></div><div class="col-md-3 col-12"><label class="small fw-bold">Note</label><input type="text" id="editNote" class="form-control"></div></div><div class="row g-2 mb-3 align-items-end"><div class="col-md-3 col-6"><label class="small fw-bold">WKI_m</label><input type="number" step="0.01" id="editWki" class="form-control"></div><div class="col-md-3 col-6"><label class="small fw-bold">M365_m</label><input type="number" step="0.01" id="editM365" class="form-control"></div><div class="col-md-3 col-6"><label class="small fw-bold">Una Tantum</label><input type="number" step="0.01" id="editUna" class="form-control"></div><div class="col-md-3 col-6"><label class="small fw-bold">1° Fattura</label><input type="date" id="editDataFatt" class="form-control"></div></div></form></div><div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annulla</button><button type="button" class="btn btn-primary fw-bold" onclick="window.saveEditOrdine()">SALVA MODIFICHE</button></div></div></div></div>
     <div class="modal fade" id="modalEditCliente" tabindex="-1"><div class="modal-dialog modal-lg"><div class="modal-content"><div class="modal-header bg-primary text-white"><h5 class="modal-title fw-bold"><i class="bi bi-person-badge"></i> Gestione Cliente</h5><button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button></div><div class="modal-body bg-light"><form id="formEditCliente"><input type="hidden" id="cliKey"><div class="row g-2 mb-3"><div class="col-md-3 col-6"><label class="small fw-bold">SAP</label><input type="text" id="cliSap" class="form-control"></div><div class="col-md-6 col-12"><label class="small fw-bold">Nome / Ragione Sociale</label><input type="text" id="cliNome" class="form-control"></div><div class="col-md-3 col-6"><label class="small fw-bold">Partita IVA</label><input type="text" id="cliPiva" class="form-control"></div></div><div class="row g-2 mb-3"><div class="col-md-4 col-12"><label class="small fw-bold">Account</label><input type="text" id="cliAccount" list="listAccounts" class="form-control"></div><div class="col-md-4 col-12"><label class="small fw-bold">Cod. Fiscale</label><input type="text" id="cliSwOa" class="form-control"></div><div class="col-md-4 col-12"><label class="small fw-bold">Telefono</label><input type="text" id="cliTel" class="form-control"></div></div><div class="row g-2 mb-3"><div class="col-md-6 col-12"><label class="small fw-bold">Via e Numero</label><input type="text" id="cliVia" class="form-control"></div><div class="col-md-4 col-8"><label class="small fw-bold">Città</label><input type="text" id="cliCitta" class="form-control"></div><div class="col-md-2 col-4"><label class="small fw-bold">Prov</label><input type="text" id="cliProv" class="form-control"></div></div><div class="row g-2 mb-3"><div class="col-md-6 col-12"><label class="small fw-bold">Email</label><input type="text" id="cliEmail" class="form-control"></div><div class="col-md-6 col-12"><label class="small fw-bold">Note</label><input type="text" id="cliNote" class="form-control"></div></div></form></div><div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annulla</button><button type="button" class="btn btn-primary fw-bold" onclick="window.saveCliente()">SALVA CLIENTE</button></div></div></div></div>
     <div class="modal fade" id="modalEditContratto" tabindex="-1"><div class="modal-dialog modal-lg"><div class="modal-content"><div class="modal-header bg-secondary text-white"><h5 class="modal-title fw-bold"><i class="bi bi-file-text"></i> Gestione Contratto</h5><button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button></div><div class="modal-body bg-light"><form id="formEditContratto"><input type="hidden" id="conKey"><div class="row g-2 mb-3"><div class="col-md-3 col-6"><label class="small fw-bold">SAP</label><input type="text" id="conSap" class="form-control"></div><div class="col-md-5 col-12"><label class="small fw-bold">Cliente (Nome)</label><input type="text" id="conNome" class="form-control"></div><div class="col-md-4 col-6"><label class="small fw-bold">Account</label><input type="text" id="conAccount" list="listAccounts" class="form-control"></div></div><div class="row g-2 mb-3"><div class="col-md-4 col-12"><label class="small fw-bold">Codice Sistema</label><input type="text" id="conSistema" class="form-control"></div><div class="col-md-4 col-12"><label class="small fw-bold">Codice Listino</label><input type="text" id="conCodice" class="form-control"></div><div class="col-md-4 col-12"><label class="small fw-bold">Pagamento</label><input type="text" id="conPagamento" class="form-control"></div></div><div class="row g-2 mb-3"><div class="col-md-8 col-12"><label class="small fw-bold">Testo Ordine / Prodotto</label><input type="text" id="conTesto" class="form-control"></div><div class="col-md-2 col-6"><label class="small fw-bold">Q.tà</label><input type="number" id="conQta" class="form-control"></div><div class="col-md-2 col-6"><label class="small fw-bold">Passo</label><input type="text" id="conPasso" class="form-control"></div></div><div class="row g-2 mb-3 align-items-end"><div class="col-md-4 col-12"><label class="small fw-bold">Data Scadenza</label><input type="date" id="conScadenza" class="form-control"></div><div class="col-md-4 col-6"><label class="small fw-bold text-primary">Valore Rinnovo</label><input type="number" step="0.01" id="conValRinnovo" class="form-control"></div><div class="col-md-4 col-6"><label class="small fw-bold text-info">Val. Unit. Mensile</label><input type="number" step="0.01" id="conValMensile" class="form-control"></div></div></form></div><div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annulla</button><button type="button" class="btn btn-primary fw-bold" onclick="window.saveContratto()">SALVA CONTRATTO</button></div></div></div></div>
     <div class="modal fade" id="modalEditMigrazione" tabindex="-1"><div class="modal-dialog"><div class="modal-content"><div class="modal-header bg-info text-white"><h5 class="modal-title fw-bold"><i class="bi bi-airplane-engines"></i> Modifica Migrazione</h5><button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button></div><div class="modal-body bg-light"><form id="formEditMigrazione"><input type="hidden" id="editMigrKey"><div class="mb-3"><label class="small fw-bold">Cliente</label><input type="text" id="editMigrCliente" class="form-control bg-white" readonly></div><div class="row g-2 mb-3"><div class="col-md-4 col-12"><label class="small fw-bold">Data Prevista</label><input type="date" id="editMigrData" class="form-control"></div><div class="col-md-4 col-12"><label class="small fw-bold">Stato</label><select id="editMigrStato" class="form-select"><option value="Prevista">Prevista</option><option value="Sospesa">Sospesa</option><option value="Pianificata">Pianificata</option><option value="Altro">Altro</option></select></div><div class="col-md-4 col-12"><label class="small fw-bold">Utenti</label><input type="number" id="editMigrUtenti" class="form-control" min="0" step="1"></div></div><div class="mb-3"><label class="small fw-bold">Note / Appunti</label><textarea id="editMigrNote" class="form-control" rows="3"></textarea></div></form></div><div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annulla</button><button type="button" class="btn btn-primary fw-bold" onclick="window.saveEditMigrazione()">SALVA MODIFICHE</button></div></div></div></div>
@@ -381,7 +381,7 @@
 // === GRUPPO VISIBILITÀ CONDIVISA (solo VISUALIZZAZIONE) ===
 // Questi account possono vedere reciprocamente Clienti/Contratti/Ordini/Migrazioni in tutte le schede,
 // ma possono SCRIVERE solo sul proprio Account.
-const SHARED_VIEW_ACCOUNTS = ['FEDERICO ROSSI', 'MANUEL MANCHI', 'GIOVANNI VITTI'];
+const SHARED_VIEW_ACCOUNTS = ['FEDERICO ROSSI', 'MANUEL MANCHI', 'GIOVANNI VITTI', 'FEDELE LASSANDRO'];
 const isSharedViewUser = () => SHARED_VIEW_ACCOUNTS.includes(_base(currentAccountName || ''));
 
 const USER_POLICIES = {
@@ -657,14 +657,30 @@ const hasAzioniColumn = () => {
   };
 
   push(ref(db, 'migrazioni'), newMigr)
-    .then(() => {
-      alert('Migrazione pianificata con successo!');
-      document.getElementById('migrClienteSelect').value = '';
-      document.getElementById('migrQta').value = '';
-      document.getElementById('migrData').value = '';
-      document.getElementById('migrNote').value = '';
-    })
-    .catch(e => alert(e.message));
+  .then((newRef) => {
+    alert('Migrazione pianificata con successo!');
+    // Aggiorna subito Piano Migrazioni e Report Annuale (aggiornamento ottimistico)
+    const newKey = newRef && newRef.key ? newRef.key : null;
+    if(newKey) {
+      const rowToAdd = { ...newMigr, firebaseKey: newKey };
+      // Evita duplicati: può capitare che l'onValue abbia già inserito la riga prima del .then
+      const alreadyGlobal = (globalMigrazioni || []).some(x => x && x.firebaseKey === newKey);
+      if(!alreadyGlobal) globalMigrazioni.push(rowToAdd);
+
+      const belongs = isCurrentAdmin() || (rowToAdd.Account && currentAccountKeys.has(accountKey(rowToAdd.Account)));
+      const alreadyView = (migrazioniView || []).some(x => x && x.firebaseKey === newKey);
+      if(belongs && !alreadyView) migrazioniView.push(rowToAdd);
+    }
+    if(typeof renderTabellaMigrazioni === 'function') renderTabellaMigrazioni();
+    if(typeof window.initReportMigrazioni === 'function') window.initReportMigrazioni();
+    else if(typeof window.generateMigrationReport === 'function') window.generateMigrationReport();
+
+    document.getElementById('migrClienteSelect').value = '';
+    document.getElementById('migrQta').value = '';
+    document.getElementById('migrData').value = '';
+    document.getElementById('migrNote').value = '';
+  })
+  .catch(e => alert(e.message));
 };
     window.openEditMigrazione = (key) => { const migr = migrazioniView.find(m => m.firebaseKey === key) || globalMigrazioni.find(m => m.firebaseKey === key); if(!migr) return; document.getElementById('editMigrKey').value = key; document.getElementById('editMigrCliente').value = `${migr.Cliente} (${migr.SAP})`; document.getElementById('editMigrData').value = migr.Data_Prevista || ''; document.getElementById('editMigrStato').value = migr.Stato || 'Prevista'; document.getElementById('editMigrNote').value = migr.Note || ''; document.getElementById('editMigrUtenti').value = (parseInt(migr.Utenti_Migrazione,10) || 0); new bootstrap.Modal(document.getElementById('modalEditMigrazione')).show(); };
     window.saveEditMigrazione = () => {
@@ -678,11 +694,32 @@ const hasAzioniColumn = () => {
   const updates = {
     Data_Prevista: document.getElementById('editMigrData').value,
     Stato: document.getElementById('editMigrStato').value,
-    Note: document.getElementById('editMigrNote').value
+    Note: document.getElementById('editMigrNote').value,
+    Utenti_Migrazione: parseInt(document.getElementById('editMigrUtenti').value, 10) || 0
   };
 
   update(ref(db, `migrazioni/${key}`), updates)
-    .then(() => { bootstrap.Modal.getInstance(document.getElementById('modalEditMigrazione')).hide(); alert('Migrazione aggiornata!'); })
+    .then(() => {
+      bootstrap.Modal.getInstance(document.getElementById('modalEditMigrazione')).hide();
+      alert('Migrazione aggiornata!');
+      // Aggiorna subito la riga a video e il report (aggiornamento ottimistico)
+      const newU = parseInt(document.getElementById('editMigrUtenti').value, 10) || 0;
+      const keyUpd = key;
+      const patchRow = (arr) => {
+        const idx = (arr || []).findIndex(x => x && x.firebaseKey === keyUpd);
+        if(idx >= 0) {
+          arr[idx].Utenti_Migrazione = newU;
+          arr[idx].Data_Prevista = document.getElementById('editMigrData').value;
+          arr[idx].Stato = document.getElementById('editMigrStato').value;
+          arr[idx].Note = document.getElementById('editMigrNote').value;
+        }
+      };
+      patchRow(globalMigrazioni);
+      patchRow(migrazioniView);
+      if(typeof renderTabellaMigrazioni === 'function') renderTabellaMigrazioni();
+      if(typeof window.initReportMigrazioni === 'function') window.initReportMigrazioni();
+    else if(typeof window.generateMigrationReport === 'function') window.generateMigrationReport();
+    })
     .catch(e => alert(e.message));
 };
     window.eliminaMigrazione = (key) => {
@@ -757,7 +794,25 @@ const hasAzioniColumn = () => {
     .then(() => { alert('Ordine salvato!'); document.getElementById('formOrdine').reset(); window.navigate('fatturato'); })
     .catch(e => alert(e.message));
 };
-    window.openEditOrdine = (key) => { const ord = fatturatoView.find(o => o.firebaseKey === key) || globalFatturato.find(o => o.firebaseKey === key); if(!ord) return; document.getElementById('editKey').value = key; document.getElementById('editData').value = ord.Data_ordine || ''; document.getElementById('editSap').value = ord.SAP || ''; document.getElementById('editCliente').value = ord.Cliente || ''; document.getElementById('editAccount').value = ord.Account || ''; document.getElementById('editOrdineAP').value = ord.Ordine_AP || ''; document.getElementById('editDesc').value = ord.Descrizione_Ordine || ''; document.getElementById('editTeamsLink').value = ord.Link_Teams || ''; document.getElementById('editNote').value = ord.Note || ''; document.getElementById('editWki').value = ord.WKI_m || 0; document.getElementById('editM365').value = ord.M365_m || 0; document.getElementById('editUna').value = ord.Una_Tantum || 0; document.getElementById('editDataFatt').value = ord.Data_prima_fatt || ''; document.getElementById('editSuccesso').value = ord.Successo_perc || 0; const selStato = document.getElementById('editStato'); selStato.innerHTML = ''; ['Offerta','Evaso','Da Evadere','Sospeso'].forEach(s => { const opt = document.createElement('option'); opt.value = s; opt.text = s; if(s === ord.Stato) opt.selected = true; selStato.appendChild(opt); }); new bootstrap.Modal(document.getElementById('modalEditOrdine')).show(); };
+    window.openEditOrdine = (key) => { const ord = fatturatoView.find(o => o.firebaseKey === key) || globalFatturato.find(o => o.firebaseKey === key); if(!ord) return; document.getElementById('editKey').value = key; document.getElementById('editData').value = ord.Data_ordine || ''; document.getElementById('editSap').value = ord.SAP || ''; document.getElementById('editCliente').value = ord.Cliente || ''; document.getElementById('editAccount').value = ord.Account || ''; document.getElementById('editOrdineAP').value = ord.Ordine_AP || ''; document.getElementById('editDesc').value = ord.Descrizione_Ordine || ''; document.getElementById('editTeamsLink').value = ord.Link_Teams || ''; document.getElementById('editNote').value = ord.Note || ''; document.getElementById('editWki').value = ord.WKI_m || 0; document.getElementById('editM365').value = ord.M365_m || 0; document.getElementById('editUna').value = ord.Una_Tantum || 0; document.getElementById('editDataFatt').value = ord.Data_prima_fatt || ''; document.getElementById('editSuccesso').value = ord.Successo_perc || 0; const selStato = document.getElementById('editStato');
+  selStato.innerHTML = '';
+  const stati = ["Offerta Presentata", "Offerta Sospesa", "Ordine da Evadere", "Ordine Evaso", "Ordine Sospeso", "Altro"];
+  let curr = (ord.Stato ?? '').toString().trim();
+  const mapOld = {
+    'OFFERTA': 'Offerta Presentata',
+    'EVASO': 'Ordine Evaso',
+    'DA EVADERE': 'Ordine da Evadere',
+    'SOSPESO': 'Ordine Sospeso'
+  };
+  const currUp = curr.toUpperCase();
+  if(mapOld[currUp]) curr = mapOld[currUp];
+  stati.forEach(s => {
+    const opt = document.createElement('option');
+    opt.value = s;
+    opt.text = s;
+    if(s === curr) opt.selected = true;
+    selStato.appendChild(opt);
+  }); new bootstrap.Modal(document.getElementById('modalEditOrdine')).show(); };
     window.saveEditOrdine = () => {
   if(!userCan('update')) return alert('Permesso negato: non puoi modificare ordini.');
 
@@ -916,7 +971,13 @@ const hasAzioniColumn = () => {
     window.filterFatturato = (colIndex) => { const table = document.getElementById('tabellaFatturatoReal'); const trs = table.getElementsByTagName("tbody")[0].getElementsByTagName("tr"); const inputs = table.getElementsByTagName("thead")[0].getElementsByTagName("input"); let filters = []; for (let i = 0; i < inputs.length; i++) filters.push({ idx: i + 1, val: inputs[i].value.toUpperCase() }); for (let i = 0; i < trs.length; i++) { let show = true; const tds = trs[i].getElementsByTagName("td"); for (let f of filters) { if (f.val) { if (tds[f.idx]) { const txt = tds[f.idx].textContent || tds[f.idx].innerText; if (txt.toUpperCase().indexOf(f.val) === -1) { show = false; break; }}}} trs[i].style.display = show ? "" : "none"; } window.updateFatturatoTotals(); };
     window.filterClienti = (colIndex) => { const table = document.getElementById('tabellaClientiReal'); const trs = table.getElementsByTagName("tbody")[0].getElementsByTagName("tr"); const inputs = table.getElementsByTagName("thead")[0].getElementsByTagName("input"); const isAdmin = isCurrentAdmin(); const offset = isCurrentAdmin() ? 1 : 0; let filters = []; for (let i = 0; i < inputs.length; i++) filters.push({ idx: i + offset, val: inputs[i].value.toUpperCase() }); for (let i = 0; i < trs.length; i++) { let show = true; const tds = trs[i].getElementsByTagName("td"); for (let f of filters) { if (f.val) { if (tds[f.idx]) { const txt = tds[f.idx].textContent || tds[f.idx].innerText; if (txt.toUpperCase().indexOf(f.val) === -1) { show = false; break; }}}} trs[i].style.display = show ? "" : "none"; } };
     window.filterContratti = (colIndex) => { const table = document.getElementById('tabellaContrattiReal'); const trs = table.getElementsByTagName("tbody")[0].getElementsByTagName("tr"); const inputs = table.getElementsByTagName("thead")[0].getElementsByTagName("input"); const isAdmin = isCurrentAdmin(); const offset = isCurrentAdmin() ? 1 : 0; let filters = []; for (let i = 0; i < inputs.length; i++) filters.push({ idx: i + offset, val: inputs[i].value.toUpperCase() }); for (let i = 0; i < trs.length; i++) { let show = true; const tds = trs[i].getElementsByTagName("td"); for (let f of filters) { if (f.val) { if (tds[f.idx]) { const txt = tds[f.idx].textContent || tds[f.idx].innerText; if (txt.toUpperCase().indexOf(f.val) === -1) { show = false; break; }}}} trs[i].style.display = show ? "" : "none"; } };
-    window.updateFatturatoTotals = () => { const tbody = document.getElementById('tabellaFatturatoFull'); const trs = tbody.getElementsByTagName('tr'); let sumUna = 0, sumFin = 0, sumWkiAn = 0, sumM365An = 0, sumGrandEvaso = 0; for(let tr of trs) { if(tr.style.display !== 'none') { const tds = tr.getElementsByTagName('td'); if(tds.length > 19) { const una = parseFloat(tds[11].getAttribute('data-val')) || 0; const fin = parseFloat(tds[18].getAttribute('data-val')) || 0; sumUna += una; sumFin += fin; sumWkiAn += parseFloat(tds[19].getAttribute('data-val')) || 0; sumM365An += parseFloat(tds[20].getAttribute('data-val')) || 0; const stato = (tds[14].innerText || '').trim().toUpperCase(); if(stato === 'EVASO') { sumGrandEvaso += (una + fin); } } } } document.getElementById('totUna').innerText = sumUna.toLocaleString('it-IT', {minimumFractionDigits: 2}); document.getElementById('totFin').innerText = sumFin.toLocaleString('it-IT', {minimumFractionDigits: 2}); document.getElementById('totWkiAn').innerText = sumWkiAn.toLocaleString('it-IT', {minimumFractionDigits: 2}); document.getElementById('totM365An').innerText = sumM365An.toLocaleString('it-IT', {minimumFractionDigits: 2}); document.getElementById('totGrand').innerText = sumGrandEvaso.toLocaleString('it-IT', {minimumFractionDigits: 2}); };
+    window.updateFatturatoTotals = () => { const tbody = document.getElementById('tabellaFatturatoFull'); const trs = tbody.getElementsByTagName('tr'); let sumUna = 0, sumFin = 0, sumWkiAn = 0, sumM365An = 0, sumGrandEvaso = 0; for(let tr of trs) { if(tr.style.display !== 'none') { const tds = tr.getElementsByTagName('td'); if(tds.length > 19) { const una = parseFloat(tds[11].getAttribute('data-val')) || 0; const fin = parseFloat(tds[18].getAttribute('data-val')) || 0; sumUna += una; sumFin += fin; sumWkiAn += parseFloat(tds[19].getAttribute('data-val')) || 0; sumM365An += parseFloat(tds[20].getAttribute('data-val')) || 0; const stato = (tds[14].innerText || '').trim().toUpperCase();
+        // TOTALE COMPLESSIVO: somma (Una_Tantum + Finanziario) SOLO per righe filtrate con Stato = 'Ordine Evaso'
+        const isEvaso = (stato === 'ORDINE EVASO' || stato === 'EVASO');
+        if(isEvaso) {
+          sumGrandEvaso += (una + fin);
+        }
+      } } } document.getElementById('totUna').innerText = sumUna.toLocaleString('it-IT', {minimumFractionDigits: 2}); document.getElementById('totFin').innerText = sumFin.toLocaleString('it-IT', {minimumFractionDigits: 2}); document.getElementById('totWkiAn').innerText = sumWkiAn.toLocaleString('it-IT', {minimumFractionDigits: 2}); document.getElementById('totM365An').innerText = sumM365An.toLocaleString('it-IT', {minimumFractionDigits: 2}); document.getElementById('totGrand').innerText = sumGrandEvaso.toLocaleString('it-IT', {minimumFractionDigits: 2}); };
 
     window.clearTable = (node) => { if(confirm(`Sei sicuro di voler SVUOTARE la tabella ${node.toUpperCase()}?`)) set(ref(db, node), null).then(() => alert("Tabella svuotata!")); };
     window.importExcel = (inputId, node) => { const file = document.getElementById(inputId).files[0]; if(!file) return alert("Seleziona un file Excel."); const reader = new FileReader(); reader.onload = (e) => { const workbook = XLSX.read(e.target.result, {type: 'binary'}); const sheet = workbook.Sheets[workbook.SheetNames[0]]; const jsonData = XLSX.utils.sheet_to_json(sheet); if(jsonData.length === 0) return alert("File vuoto o non valido."); const nodeRef = ref(db, node); jsonData.forEach(row => push(nodeRef, row)); alert(`Importazione completata!`); }; reader.readAsBinaryString(file); };
@@ -934,7 +995,20 @@ const hasAzioniColumn = () => {
     Array.from(allAccounts).sort().forEach(acc => { select.innerHTML += `<option value="${acc}">${acc}</option>`; });
     select.multiple = true;
     select.disabled = false;
-  } else {
+    } else {
+    // Gruppo visibilità condivisa: nel Report Annuale devono vedersi reciprocamente
+    if(isSharedViewUser()) {
+      select.innerHTML = '';
+      SHARED_VIEW_ACCOUNTS.forEach(acc => {
+        const v = _base(acc);
+        if(v) select.innerHTML += `<option value="${v}" selected>${v}</option>`;
+      });
+      select.multiple = true;
+      select.disabled = false;
+      window.generateMigrationReport();
+      return;
+    }
+
     const p = getCurrentPolicy();
     if(p && Array.isArray(p.accounts) && p.accounts.length > 0) {
       // Per utenti con policy: mostra solo gli account consentiti e permette la selezione multipla tra essi
