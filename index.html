@@ -623,21 +623,23 @@ const hasAzioniColumn = () => {
   };
 
   bestContracts.forEach(con => {
-    if(!matchQuery(con.Nome, con.SAP)) return;
+ if(!matchQuery(con.Nome, con.SAP)) return;
+ const qta = parseInt(con["QUANTITA'"] || 0, 10) || 0;
+ const valData = JSON.stringify({
+  sap: con.SAP,
+  cliente: con.Nome,
+  account: con.Account,
+  sistema: con.Codice_SISTEMA,
+  qta: qta
+ });
+ const label = `${con.Nome} (SAP: ${con.SAP}) - ${con.Codice_SISTEMA} - Q.tà: ${qta}`;
+ const opt = document.createElement('option');
+ opt.value = valData;
+ opt.textContent = label;
+ select.appendChild(opt);
+});
 
-    const qta = parseInt(con["QUANTITA'"] || 0, 10) || 0;
-    const valData = JSON.stringify({
-      sap: con.SAP,
-      cliente: con.Nome,
-      account: con.Account,
-      sistema: con.Codice_SISTEMA,
-      qta: qta
-    });
-    const label = `${con.Nome} (SAP: ${con.SAP}) - ${con.Codice_SISTEMA} - Q.tà: ${qta}`;
-    select.innerHTML += `<option value='${valData}'>${label}</option>`;
-  });
-
-  // Auto-selezione in anteprima: se c'è una ricerca attiva e ci sono risultati, seleziona il primo
+ // Auto-selezione in anteprima: se c'è una ricerca attiva e ci sono risultati, seleziona il primo
   if((autoSelect || qCompact) && select.options.length > 1) {
     select.selectedIndex = 1;
     window.updateMigrationUserCount();
@@ -755,7 +757,66 @@ const hasAzioniColumn = () => {
    mapInstance._gsPopupHandlersAdded = true;
  }
  } setTimeout(() => { mapInstance.invalidateSize(); }, 200); };
-    window.aggiornaMappa = async () => { if(!markersGroup) return; markersGroup.clearLayers(); const checkedBoxes = document.querySelectorAll('#filterMapSistemaContainer input:checked'); const selectedSystems = Array.from(checkedBoxes).map(cb => cb.value).filter(val => val !== "" && val !== "on"); const accFilter = document.getElementById('filterMapAccount').value; const minVal = parseFloat(document.getElementById('filterMapMin').value) || 0; const maxVal = parseFloat(document.getElementById('filterMapMax').value) || 99999999; const contrattiPerCliente = {}; contrattiView.forEach(c => { const matchSystem = selectedSystems.length === 0 || selectedSystems.includes(c.Codice_SISTEMA); if (matchSystem) { const sapKey = String(c.SAP).trim(); if(!contrattiPerCliente[sapKey]) contrattiPerCliente[sapKey] = []; contrattiPerCliente[sapKey].push(c); } }); const clientiDaMappare = []; clientiView.forEach(cli => { const sapKey = String(cli.SAP).trim(); if (accFilter !== "" && cli.Account !== accFilter) return; const contrattiDelCliente = contrattiPerCliente[sapKey] || []; const totaleValore = contrattiDelCliente.reduce((sum, c) => sum + parseCurrency(c.VALORE_RINNOVO), 0); if (totaleValore >= minVal && totaleValore <= maxVal) { if(selectedSystems.length > 0 && contrattiDelCliente.length === 0 && minVal > 0) return; if (cli.Città) { cli._tempTotale = totaleValore; cli._tempSistemi = [...new Set(contrattiDelCliente.map(c => c.Codice_SISTEMA))].join(", "); clientiDaMappare.push(cli); } } }); document.getElementById('mapResultCount').innerText = clientiDaMappare.length; if(clientiDaMappare.length === 0) return alert("Nessun cliente soddisfa i criteri."); if(clientiDaMappare.length > 50 && !confirm(`Trovati ${clientiDaMappare.length} clienti. Continuare?`)) return; let count = 0; for (const cli of clientiDaMappare) { let queryParts = []; if(cli.Via_e_numero) queryParts.push(cli.Via_e_numero); if(cli.Città) queryParts.push(cli.Città); if(cli.Prov) queryParts.push(cli.Prov); queryParts.push("Italy"); const query = queryParts.join(', '); try { const response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}`); const data = await response.json(); if (data && data.length > 0) { let lat = parseFloat(data[0].lat); let lon = parseFloat(data[0].lon); lat += (Math.random() - 0.5) * 0.0004; lon += (Math.random() - 0.5) * 0.0004; const marker = L.marker([lat, lon]); const valFmt = cli._tempTotale.toLocaleString('it-IT', {style: 'currency', currency: 'EUR'}); const popupContent = `
+    window.aggiornaMappa = async () => { if(!markersGroup) return; markersGroup.clearLayers(); 
+const checkedBoxes = document.querySelectorAll('#filterMapSistemaContainer input:checked');
+// Sistemi selezionati: logica 'filtro inverso'
+// - se NON seleziono nulla: includo TUTTI i clienti (filtrati solo da ACCOUNT e RANGE)
+// - se seleziono uno o più sistemi: includo SOLO i clienti che NON possiedono nessuno dei sistemi selezionati
+const selectedSystems = Array.from(checkedBoxes)
+  .map(cb => cb.value)
+  .filter(val => val !== '' && val !== 'on');
+
+const accFilter = document.getElementById('filterMapAccount').value;
+const minVal = parseFloat(document.getElementById('filterMapMin').value) || 0;
+const maxVal = parseFloat(document.getElementById('filterMapMax').value) || 99999999;
+
+// Indicizzazione contratti per cliente (sempre su TUTTI i contratti)
+const contrattiPerCliente = {};
+contrattiView.forEach(c => {
+  const sapKey = String(c.SAP).trim();
+  if(!contrattiPerCliente[sapKey]) contrattiPerCliente[sapKey] = [];
+  contrattiPerCliente[sapKey].push(c);
+});
+
+// Funzione: il cliente ha almeno uno dei sistemi selezionati?
+const hasAnySelectedSystem = (contrattiDelCliente) => {
+  if(!selectedSystems || selectedSystems.length === 0) return false;
+  const sysSet = new Set((contrattiDelCliente || []).map(x => (x.Codice_SISTEMA || '').toString().trim()).filter(Boolean));
+  return selectedSystems.some(s => sysSet.has(s));
+};
+
+
+// Collezione unica per cliente (evita duplicati in mappa): chiave = SAP
+const clientiDaMappareMap = new Map();
+
+clientiView.forEach(cli => {
+  const sapKey = String(cli.SAP).trim();
+  if(!sapKey) return;
+  if (accFilter !== '' && cli.Account !== accFilter) return;
+
+  const contrattiDelCliente = contrattiPerCliente[sapKey] || [];
+
+  // Filtro inverso: se ho selezionato sistemi, escludo i clienti che li hanno
+  if(selectedSystems.length > 0 && hasAnySelectedSystem(contrattiDelCliente)) return;
+
+  // Valore totale: somma del VALORE_RINNOVO su TUTTI i contratti del cliente
+  const totaleValore = contrattiDelCliente.reduce((sum, c) => sum + parseCurrency(c.VALORE_RINNOVO), 0);
+
+  if (totaleValore >= minVal && totaleValore <= maxVal) {
+    if (cli.Città) {
+      // prepara i campi usati nel popup
+      cli._tempTotale = totaleValore;
+      cli._tempSistemi = [...new Set(contrattiDelCliente.map(c => c.Codice_SISTEMA).filter(Boolean))].join(', ');
+      // salva una sola occorrenza per SAP
+      if(!clientiDaMappareMap.has(sapKey)) {
+        clientiDaMappareMap.set(sapKey, cli);
+      }
+    }
+  }
+});
+
+const clientiDaMappare = Array.from(clientiDaMappareMap.values());
+document.getElementById('mapResultCount').innerText = clientiDaMappare.length; if(clientiDaMappare.length === 0) return alert("Nessun cliente soddisfa i criteri."); if(clientiDaMappare.length > 50 && !confirm(`Trovati ${clientiDaMappare.length} clienti. Continuare?`)) return; let count = 0; for (const cli of clientiDaMappare) { let queryParts = []; if(cli.Via_e_numero) queryParts.push(cli.Via_e_numero); if(cli.Città) queryParts.push(cli.Città); if(cli.Prov) queryParts.push(cli.Prov); queryParts.push("Italy"); const query = queryParts.join(', '); try { const response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}`); const data = await response.json(); if (data && data.length > 0) { let lat = parseFloat(data[0].lat); let lon = parseFloat(data[0].lon); lat += (Math.random() - 0.5) * 0.0004; lon += (Math.random() - 0.5) * 0.0004; const marker = L.marker([lat, lon]); const valFmt = cli._tempTotale.toLocaleString('it-IT', {style: 'currency', currency: 'EUR'}); const popupContent = `
                   <div style="font-size:0.9rem; min-width: 240px;">
                     <div class="fw-bold text-primary mb-1">${escapeHtml(cli.Nome)}</div>
                     <div class="small text-muted">SAP: <b>${escapeHtml(cli.SAP)}</b></div>
@@ -766,7 +827,7 @@ const hasAzioniColumn = () => {
                       ${cleanEmail(cli.e_mail) ? `<a href="${escapeHtml(emailHref(cli.e_mail))}" class="text-decoration-none"><i class="bi bi-envelope-fill me-1"></i>${escapeHtml(cleanEmail(cli.e_mail))}</a>` : `<span class="text-muted small"><i class="bi bi-envelope me-1"></i>Email: N/D</span>`}
                     </div>
                     <div class="bg-light p-2 rounded border">
-                      <div><small>Totale sistemi selezionati: <b>${valFmt}</b></small></div>
+                      <div><small>Totale valore contratti: <b>${valFmt}</b></small></div>
                       <div class="small text-secondary" style="font-size:0.75rem">${escapeHtml(cli._tempSistemi || '')}</div>
                     </div>
                   </div>`;
