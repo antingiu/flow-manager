@@ -407,33 +407,41 @@ const SHARED_VIEW_GROUPS = [
   // Gruppo A (già esistente)
   ['FEDERICO ROSSI', 'MANUEL MANCHI', 'GIOVANNI VITTI', 'FEDELE LASSANDRO'],
   // Gruppo B (richiesto): questi account vedono reciprocamente tutti i dati
-  ['LUIGI SORRENTINO', 'GRAZIA PUTIGNANO', 'ANNARITA BRAMUCCI']
+  ['LUIGI SORRENTINO', 'GRAZIA PUTIGNANO', 'ANNARITA BRAMUCCI'],
+  // Gruppo C (richiesto): visibilità reciproca tra i due account
+  ['MARIO DIGREGORIO', 'FRANCESCO MASSARO'],
+
 ];
 const getSharedViewGroupForUser = () => {
-  const me = _base(currentAccountName || '');
+  // Usa accountKey per rendere il match robusto (es. 'NOME COGNOME' vs 'COGNOME NOME')
+  const meKey1 = accountKey(currentAccountName || '');
+  const meKey2 = accountKey(accountFromEmail(currentUserEmail || ''));
   for (const group of SHARED_VIEW_GROUPS) {
-    const norm = group.map(_base);
-    if (norm.includes(me)) return group;
+    const keys = group.map(n => accountKey(n));
+    if (keys.includes(meKey1) || keys.includes(meKey2)) return group;
   }
   return null;
 };
 const isSharedViewUser = () => !!getSharedViewGroupForUser();
 
+// === GRUPPO VISIBILITÀ (POLICY) FEDERICO/MATTEO/SILVIO ===
+// Questi 3 utenti vedono: i 3 account personali + i 3 account condivisi ("*- CAPITANIO").
+// NOTA: usiamo USER_POLICIES (non SHARED_VIEW_GROUPS) per NON limitare la scrittura (possono operare anche sugli account condivisi).
 const USER_POLICIES = {
   "maura.capitanio@wolterskluwer.com": {
     accounts: ["BRUGNONE - CAPITANIO", "MITRO - CAPITANIO", "POZZOLI - CAPITANIO"],
     can: { view: true, update: true, insert: true, del: true }
   },
   "federico.brugnone@wolterskluwer.com": {
-    accounts: ["FEDERICO BRUGNONE", "BRUGNONE - CAPITANIO"],
+    accounts: ["FEDERICO BRUGNONE", "BRUGNONE - CAPITANIO", "MATTEO POZZOLI", "POZZOLI - CAPITANIO", "SILVIO MITRO", "MITRO - CAPITANIO"],
     can: { view: true, update: true, insert: true, del: true }
   },
   "matteo.pozzoli@wolterskluwer.com": {
-    accounts: ["MATTEO POZZOLI", "POZZOLI - CAPITANIO"],
+    accounts: ["FEDERICO BRUGNONE", "BRUGNONE - CAPITANIO", "MATTEO POZZOLI", "POZZOLI - CAPITANIO", "SILVIO MITRO", "MITRO - CAPITANIO"],
     can: { view: true, update: true, insert: true, del: true }
   },
   "s.mitro@wolterskluwer.com": {
-    accounts: ["SILVIO MITRO", "MITRO - CAPITANIO"],
+    accounts: ["FEDERICO BRUGNONE", "BRUGNONE - CAPITANIO", "MATTEO POZZOLI", "POZZOLI - CAPITANIO", "SILVIO MITRO", "MITRO - CAPITANIO"],
     can: { view: true, update: true, insert: true, del: true }
   }
 };
@@ -1191,6 +1199,7 @@ window.filterClienti = (colIndex) => { const table = document.getElementById('ta
      <tr>
        <th>SAP<input type="text" class="header-filter" onkeyup="window.filterNotaioNextAI()"></th>
        <th>NOME<input type="text" class="header-filter" onkeyup="window.filterNotaioNextAI()"></th>
+ <th>ACCOUNT<input type="text" class="header-filter" onkeyup="window.filterNotaioNextAI()"></th>
        <th>TELEFONO<input type="text" class="header-filter" onkeyup="window.filterNotaioNextAI()"></th>
        <th>EMAIL<input type="text" class="header-filter" onkeyup="window.filterNotaioNextAI()"></th>
        <th style="min-width:520px; max-width:900px;">CONTATTO<input type="text" class="header-filter" onkeyup="window.filterNotaioNextAI()"></th>
@@ -1198,7 +1207,7 @@ window.filterClienti = (colIndex) => { const table = document.getElementById('ta
      </tr>`;
 
    if(rows.length === 0) {
-     tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted">Nessun cliente NOTAIONEXT trovato nel tuo perimetro.</td></tr>';
+     tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted">Nessun cliente NOTAIONEXT trovato nel tuo perimetro.</td></tr>';
      return;
    }
 
@@ -1224,6 +1233,7 @@ window.filterClienti = (colIndex) => { const table = document.getElementById('ta
        <tr>
          <td class="fw-bold">${escapeHtml(sap)}</td>
          <td>${escapeHtml(c.Nome || '')}</td>
+         <td>${escapeHtml(c.Account ?? '')}</td>
          <td>${telTxt}</td>
          <td>${emTxt}</td>
          <td ${contAttr} onblur="${contBlur}" style="min-width:520px; max-width:900px; white-space:normal;">${contatto}</td>
