@@ -170,6 +170,8 @@
                 <li><a class="nav-link" id="nav-migrazioni" onclick="window.navigate('migrazioni')"><i class="bi bi-airplane-engines"></i> Piano Migrazioni</a></li>
                 <li><a class="nav-link" id="nav-report-migrazioni" onclick="window.navigate('report-migrazioni')"><i class="bi bi-calendar3"></i> Report Annuale</a></li>
                 <li><a class="nav-link" id="nav-statistiche" onclick="window.navigate('statistiche')"><i class="bi bi-geo-alt-fill"></i> Statistiche Mappa</a></li>
+ <li><a class="nav-link" id="nav-notaionext-ai" onclick="window.navigate('notaionext-ai')"><i class="bi bi-robot"></i> Clienti NOTAIONEXT AI</a></li>
+ 
                 <li class="mt-4 border-top border-secondary pt-2" id="nav-item-strumenti" style="display:none;">
                     <a class="nav-link text-warning" id="nav-strumenti" onclick="window.navigate('strumenti')"><i class="bi bi-database-gear"></i> Strumenti DB</a>
                 </li>
@@ -295,7 +297,26 @@
                 <div class="card shadow h-100"><div class="card-body p-0"><div id="mapContainer" style="height: 600px; width: 100%;"></div></div><div class="card-footer small text-muted">Risultati trovati: <span id="mapResultCount" class="fw-bold text-primary">0</span>.</div></div>
             </div>
             
-            <div id="view-strumenti" class="view-section">
+            
+
+ <div id="view-notaionext-ai" class="view-section">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+   <h3 class="mb-0"><i class="bi bi-robot"></i> Clienti NOTAIONEXT - Contatti &amp; Successo AI</h3>
+   <div class="small text-muted">Mostra solo i clienti con sistema <b>NOTAIONEXT</b> nel tuo perimetro.</div>
+  </div>
+  <div class="card shadow-sm h-100">
+   <div class="card-body p-0 h-100 d-flex flex-column">
+    <div class="excel-view-container table-fix-height">
+     <table class="table mb-0 excel-table table-hover" id="tabellaNotaioNextAIReal">
+      <thead id="theadNotaioNextAI"></thead>
+      <tbody id="tbodyNotaioNextAI"></tbody>
+     </table>
+    </div>
+   </div>
+  </div>
+ </div>
+
+<div id="view-strumenti" class="view-section">
                 <h3 class="mb-4 text-warning"><i class="bi bi-tools"></i> Strumenti Amministratore</h3>
                 
                 <div class="row mb-4">
@@ -351,7 +372,8 @@
 
     // === RBAC + Normalizzazione Account ===
     let globalClienti = [], globalContratti = [], globalFatturato = [], globalMigrazioni = []; 
-    let globalUsers = {}; 
+    let globalUsers = {};
+ let globalNotaioNextAI = {}; // { SAP: { ACCOUNT: {Contatto, SuccessoAI, updatedAt} } } 
     let mapInstance = null; 
     let markersGroup = null; 
     let currentUserEmail = ""; 
@@ -526,11 +548,52 @@ const hasAzioniColumn = () => {
     window.loginGoogle = () => { const provider = new GoogleAuthProvider(); signInWithPopup(auth, provider).then(()=>{}).catch((error)=>{ console.error(error); alert("Errore accesso Google: "+error.message); }); };
     window.appLogout = () => { signOut(auth).then(()=>{ location.reload(); }); };
 
-    onAuthStateChanged(auth, (user) => { if (user) { checkUserMapping(user); } else { document.getElementById('loginOverlay').style.display = 'flex'; document.getElementById('mainApp').style.display = 'none'; } });
+    onAuthStateChanged(auth, async (user) => { if (user) { await checkUserMapping(user); } else { document.getElementById('loginOverlay').style.display = 'flex'; document.getElementById('mainApp').style.display = 'none'; } });
 
-    function checkUserMapping(firebaseUser) { const email = firebaseUser.email.toLowerCase(); const userKey = Object.keys(globalUsers).find(k => globalUsers[k].u && globalUsers[k].u.toLowerCase() === email); if (userKey) { const uData = globalUsers[userKey]; currentUserEmail = email; currentAccountName = uData.acc; currentUserRole = uData.role || 'USER'; document.getElementById('userDisplay').innerText = currentAccountName; document.getElementById('userEmailDisplay').innerText = email; buildCurrentAccountKeys(); startApp(); } else { alert("Accesso riuscito, ma l'utente non è configurato nel gestionale. Contatta l'amministratore per farti assegnare un Ruolo."); currentUserEmail = email; currentAccountName = firebaseUser.displayName || accountFromEmail(email); currentUserRole = 'GUEST'; document.getElementById('userDisplay').innerText = currentAccountName; document.getElementById('userEmailDisplay').innerText = email; buildCurrentAccountKeys(); startApp(); } }
-
-    function startApp() { document.getElementById('loginOverlay').style.display = 'none'; document.getElementById('mainApp').style.display = 'flex'; const canManageMaster = isCurrentAdmin(); if (!isCurrentAdmin()) { document.getElementById('nav-item-strumenti').style.display = 'none'; } else { document.getElementById('nav-item-strumenti').style.display = 'block'; } document.getElementById('btnAddCliente').style.display = canManageMaster ? 'block' : 'none'; document.getElementById('btnAddContratto').style.display = canManageMaster ? 'block' : 'none'; rebuildVisibilityContext(); renderTabelle(); if(!document.querySelector('.active-view')) window.navigate('home'); }
+    async function checkUserMapping(firebaseUser) { 
+ const email = (firebaseUser.email || '').toLowerCase(); 
+ // 1) PRIORITÀ: ruolo da Custom Claims (server-side, più sicuro). 
+ // Imposta la claim `role: 'ADMIN'` (oppure `admin: true`) sull'utente tramite Admin SDK/Cloud Functions. 
+ try { 
+ const tokenRes = await firebaseUser.getIdTokenResult(true); 
+ const claims = (tokenRes && tokenRes.claims) ? tokenRes.claims : {}; 
+ const isAdminClaim = (claims.role === 'ADMIN') || (claims.admin === true) || (claims.ADMIN === true); 
+ if (isAdminClaim) { 
+ currentUserEmail = email; 
+ currentAccountName = (firebaseUser.displayName || 'ADMIN'); 
+ currentUserRole = 'ADMIN'; 
+ document.getElementById('userDisplay').innerText = currentAccountName; 
+ document.getElementById('userEmailDisplay').innerText = email; 
+ buildCurrentAccountKeys(); 
+ startApp(); 
+ return; 
+ } 
+ } catch (e) { 
+ console.warn('Impossibile leggere Custom Claims (ok se non configurate):', e); 
+ } 
+ // 2) FALLBACK: mappatura da tabella `users` (Realtime Database) 
+ const userKey = Object.keys(globalUsers).find(k => globalUsers[k].u && globalUsers[k].u.toLowerCase() === email); 
+ if (userKey) { 
+ const uData = globalUsers[userKey]; 
+ currentUserEmail = email; 
+ currentAccountName = uData.acc; 
+ currentUserRole = uData.role || 'USER'; 
+ document.getElementById('userDisplay').innerText = currentAccountName; 
+ document.getElementById('userEmailDisplay').innerText = email; 
+ buildCurrentAccountKeys(); 
+ startApp(); 
+ } else { 
+ // Utente non mappato: accesso come GUEST (visibilità limitata), senza bloccare l'app. 
+ currentUserEmail = email; 
+ currentAccountName = (firebaseUser.displayName || accountFromEmail(email)); 
+ currentUserRole = 'GUEST'; 
+ document.getElementById('userDisplay').innerText = currentAccountName; 
+ document.getElementById('userEmailDisplay').innerText = email; 
+ buildCurrentAccountKeys(); 
+ startApp(); 
+ } 
+} 
+function startApp() { document.getElementById('loginOverlay').style.display = 'none'; document.getElementById('mainApp').style.display = 'flex'; const canManageMaster = isCurrentAdmin(); if (!isCurrentAdmin()) { document.getElementById('nav-item-strumenti').style.display = 'none'; } else { document.getElementById('nav-item-strumenti').style.display = 'block'; } document.getElementById('btnAddCliente').style.display = canManageMaster ? 'block' : 'none'; document.getElementById('btnAddContratto').style.display = canManageMaster ? 'block' : 'none'; rebuildVisibilityContext(); renderTabelle(); if(!document.querySelector('.active-view')) window.navigate('home'); }
 
     // --- GESTIONE UTENTI ADMIN (unchanged) ---
     window.newUserAdmin = () => { document.getElementById('formEditUser').reset(); document.getElementById('editUserKey').value = ''; new bootstrap.Modal(document.getElementById('modalEditUser')).show(); };
@@ -540,7 +603,7 @@ const hasAzioniColumn = () => {
     const renderUsersTable = () => { const tbody = document.getElementById('tbodyUsersAdmin'); if(!tbody) return; tbody.innerHTML = ''; Object.keys(globalUsers).forEach(key => { const u = globalUsers[key]; const badgeRole = u.role === 'ADMIN' ? '<span class="badge bg-danger">ADMIN</span>' : '<span class="badge bg-secondary">User</span>'; tbody.innerHTML += ` <tr> <td><button class="btn btn-sm btn-outline-primary" onclick="window.editUserAdmin('${key}')"><i class="bi bi-pencil"></i></button> <button class="btn btn-sm btn-outline-danger" onclick="window.deleteUserAdmin('${key}')"><i class="bi bi-trash"></i></button></td> <td>${u.u}</td> <td>${u.acc}</td> <td>${badgeRole}</td> </tr>`; }); };
 
     // --- Navigazione / init ---
-    window.navigate = (view) => { document.querySelectorAll('.view-section').forEach(el => el.classList.remove('active-view')); document.querySelectorAll('.nav-link').forEach(el => el.classList.remove('active')); document.getElementById('view-' + view).classList.add('active-view'); const nav = document.getElementById('nav-' + view); if(nav) nav.classList.add('active'); if(window.innerWidth < 992) window.toggleSidebar(); if (view === 'statistiche') window.initStatistiche(); if (view === 'migrazioni') { window.populateMigrationForm(); } if (view === 'report-migrazioni') window.initReportMigrazioni(); if (view === 'strumenti' && isCurrentAdmin()) renderUsersTable(); };
+    window.navigate = (view) => { document.querySelectorAll('.view-section').forEach(el => el.classList.remove('active-view')); document.querySelectorAll('.nav-link').forEach(el => el.classList.remove('active')); document.getElementById('view-' + view).classList.add('active-view'); const nav = document.getElementById('nav-' + view); if(nav) nav.classList.add('active'); if(window.innerWidth < 992) window.toggleSidebar(); if (view === 'statistiche') window.initStatistiche(); if (view === 'notaionext-ai') window.renderTabellaNotaioNextAI(); if (view === 'migrazioni') { window.populateMigrationForm(); } if (view === 'report-migrazioni') window.initReportMigrazioni(); if (view === 'strumenti' && isCurrentAdmin()) renderUsersTable(); };
 
     const parseCurrency = (val) => { if (!val) return 0; if (typeof val === 'number') return val; return parseFloat(val.toString().replace('€', '').replace(/\./g, '').replace(',', '.').trim()) || 0; };
 
@@ -1044,9 +1107,135 @@ document.getElementById('mapResultCount').innerText = clientiDaMappare.length; i
   if(confirm('Eliminare riga?')) remove(ref(db, `fatturato/${key}`));
 };
     window.filterFatturato = (colIndex) => { const table = document.getElementById('tabellaFatturatoReal'); const trs = table.getElementsByTagName("tbody")[0].getElementsByTagName("tr"); const inputs = table.getElementsByTagName("thead")[0].getElementsByTagName("input"); let filters = []; for (let i = 0; i < inputs.length; i++) filters.push({ idx: i + 1, val: inputs[i].value.toUpperCase() }); for (let i = 0; i < trs.length; i++) { let show = true; const tds = trs[i].getElementsByTagName("td"); for (let f of filters) { if (f.val) { if (tds[f.idx]) { const txt = tds[f.idx].textContent || tds[f.idx].innerText; if (txt.toUpperCase().indexOf(f.val) === -1) { show = false; break; }}}} trs[i].style.display = show ? "" : "none"; } window.updateFatturatoTotals(); };
-    window.filterClienti = (colIndex) => { const table = document.getElementById('tabellaClientiReal'); const trs = table.getElementsByTagName("tbody")[0].getElementsByTagName("tr"); const inputs = table.getElementsByTagName("thead")[0].getElementsByTagName("input"); const isAdmin = isCurrentAdmin(); const offset = isCurrentAdmin() ? 1 : 0; let filters = []; for (let i = 0; i < inputs.length; i++) filters.push({ idx: i + offset, val: inputs[i].value.toUpperCase() }); for (let i = 0; i < trs.length; i++) { let show = true; const tds = trs[i].getElementsByTagName("td"); for (let f of filters) { if (f.val) { if (tds[f.idx]) { const txt = tds[f.idx].textContent || tds[f.idx].innerText; if (txt.toUpperCase().indexOf(f.val) === -1) { show = false; break; }}}} trs[i].style.display = show ? "" : "none"; } };
+window.filterClienti = (colIndex) => { const table = document.getElementById('tabellaClientiReal'); const trs = table.getElementsByTagName("tbody")[0].getElementsByTagName("tr"); const inputs = table.getElementsByTagName("thead")[0].getElementsByTagName("input"); const isAdmin = isCurrentAdmin(); const offset = isCurrentAdmin() ? 1 : 0; let filters = []; for (let i = 0; i < inputs.length; i++) filters.push({ idx: i + offset, val: inputs[i].value.toUpperCase() }); for (let i = 0; i < trs.length; i++) { let show = true; const tds = trs[i].getElementsByTagName("td"); for (let f of filters) { if (f.val) { if (tds[f.idx]) { const txt = tds[f.idx].textContent || tds[f.idx].innerText; if (txt.toUpperCase().indexOf(f.val) === -1) { show = false; break; }}}} trs[i].style.display = show ? "" : "none"; } };
     window.filterContratti = (colIndex) => { const table = document.getElementById('tabellaContrattiReal'); const trs = table.getElementsByTagName("tbody")[0].getElementsByTagName("tr"); const inputs = table.getElementsByTagName("thead")[0].getElementsByTagName("input"); const isAdmin = isCurrentAdmin(); const offset = isCurrentAdmin() ? 1 : 0; let filters = []; for (let i = 0; i < inputs.length; i++) filters.push({ idx: i + offset, val: inputs[i].value.toUpperCase() }); for (let i = 0; i < trs.length; i++) { let show = true; const tds = trs[i].getElementsByTagName("td"); for (let f of filters) { if (f.val) { if (tds[f.idx]) { const txt = tds[f.idx].textContent || tds[f.idx].innerText; if (txt.toUpperCase().indexOf(f.val) === -1) { show = false; break; }}}} trs[i].style.display = show ? "" : "none"; } };
-    window.updateFatturatoTotals = () => { const tbody = document.getElementById('tabellaFatturatoFull'); const trs = tbody.getElementsByTagName('tr'); let sumUna = 0, sumFin = 0, sumWkiAn = 0, sumM365An = 0, sumGrandEvaso = 0; for(let tr of trs) { if(tr.style.display !== 'none') { const tds = tr.getElementsByTagName('td'); if(tds.length > 19) { const una = parseFloat(tds[11].getAttribute('data-val')) || 0; const fin = parseFloat(tds[18].getAttribute('data-val')) || 0; sumUna += una; sumFin += fin; sumWkiAn += parseFloat(tds[19].getAttribute('data-val')) || 0; sumM365An += parseFloat(tds[20].getAttribute('data-val')) || 0; const stato = (tds[14].innerText || '').trim().toUpperCase();
+    // --- NOTAIONEXT AI: elenco clienti + campi Contatto/Successo ---
+ // Mostra solo i clienti (nel perimetro RBAC) che hanno ALMENO un contratto con Codice_SISTEMA = NOTAIONEXT.
+ const _normSys = (s) => _base(s || '').replace(/[^A-Z0-9]/g, '');
+ const _isNotaioNext = (s) => _normSys(s) === 'NOTAIONEXT';
+ const _fbKeySafe = (k) => (k ?? '').toString().replace(/[.#$\[\]\/]/g, '_');
+ const _aiAccountId = () => _fbKeySafe(_base(currentAccountName || accountFromEmail(currentUserEmail) || ''));
+ const _aiSapKey = (sap) => String(sap ?? '').trim();
+ const _getAiData = (sap) => {
+   const sapKey = _aiSapKey(sap);
+   const accId = _aiAccountId();
+   const bySap = (globalNotaioNextAI && globalNotaioNextAI[sapKey]) ? globalNotaioNextAI[sapKey] : {};
+   return (bySap && bySap[accId]) ? bySap[accId] : {};
+ };
+ window.saveNotaioNextAIField = (sap, field, value) => {
+   if(!userCan('update')) return alert('Permesso negato: non puoi modificare questi dati.');
+   const sapKey = _aiSapKey(sap);
+   if(!sapKey) return;
+   const accId = _aiAccountId();
+   const payload = {};
+   if(field === 'SuccessoAI') {
+     let n = parseFloat((value ?? '').toString().replace(',', '.'));
+     if(isNaN(n)) n = 0;
+     n = Math.max(0, Math.min(100, Math.round(n)));
+     payload.SuccessoAI = n;
+   } else if(field === 'Contatto') {
+     payload.Contatto = (value ?? '').toString().trim();
+   } else {
+     return;
+   }
+   payload.updatedAt = new Date().toISOString();
+   update(ref(db, `notaionext_ai/${sapKey}/${accId}`), payload)
+     .then(() => {
+       // update ottimistico locale
+       if(!globalNotaioNextAI[sapKey]) globalNotaioNextAI[sapKey] = {};
+       if(!globalNotaioNextAI[sapKey][accId]) globalNotaioNextAI[sapKey][accId] = {};
+       Object.assign(globalNotaioNextAI[sapKey][accId], payload);
+     })
+     .catch(e => alert(e.message));
+ };
+ window.filterNotaioNextAI = () => {
+   const tbody = document.getElementById('tbodyNotaioNextAI');
+   if(!tbody) return;
+   const trs = tbody.getElementsByTagName('tr');
+   const inputs = document.getElementById('theadNotaioNextAI')?.getElementsByTagName('input') || [];
+   const filters = [];
+   for (let i = 0; i < inputs.length; i++) filters.push({ idx: i, val: (inputs[i].value || '').toUpperCase() });
+   for (let i = 0; i < trs.length; i++) {
+     let show = true;
+     const tds = trs[i].getElementsByTagName('td');
+     for (let f of filters) {
+       if (f.val) {
+         const cell = tds[f.idx];
+         const txt = cell ? (cell.textContent || cell.innerText || '') : '';
+         if (txt.toUpperCase().indexOf(f.val) === -1) { show = false; break; }
+       }
+     }
+     trs[i].style.display = show ? '' : 'none';
+   }
+ };
+ window.renderTabellaNotaioNextAI = () => {
+   const thead = document.getElementById('theadNotaioNextAI');
+   const tbody = document.getElementById('tbodyNotaioNextAI');
+   if(!thead || !tbody) return;
+
+   // 1) individua SAP che hanno almeno un contratto NOTAIONEXT (nel perimetro)
+   const eligibleSap = new Set();
+   (contrattiView || []).forEach(c => {
+     if(_isNotaioNext(c.Codice_SISTEMA)) {
+       const s = _aiSapKey(c.SAP);
+       if(s) eligibleSap.add(s);
+     }
+   });
+
+   // 2) prendi i clienti (anagrafica) con SAP eleggibile
+   const rows = (clientiView || []).filter(c => eligibleSap.has(_aiSapKey(c.SAP)));
+   rows.sort((a,b) => ((a.Nome || '').toString()).localeCompare((b.Nome || '').toString(), 'it', {sensitivity:'base'}));
+
+   // 3) intestazione (sempre)
+   thead.innerHTML = `
+     <tr>
+       <th>SAP<input type="text" class="header-filter" onkeyup="window.filterNotaioNextAI()"></th>
+       <th>NOME<input type="text" class="header-filter" onkeyup="window.filterNotaioNextAI()"></th>
+       <th>TELEFONO<input type="text" class="header-filter" onkeyup="window.filterNotaioNextAI()"></th>
+       <th>EMAIL<input type="text" class="header-filter" onkeyup="window.filterNotaioNextAI()"></th>
+       <th style="min-width:520px; max-width:900px;">CONTATTO<input type="text" class="header-filter" onkeyup="window.filterNotaioNextAI()"></th>
+       <th style="width:90px; min-width:90px;">SUCCESSO AI %<input type="text" class="header-filter" onkeyup="window.filterNotaioNextAI()"></th>
+     </tr>`;
+
+   if(rows.length === 0) {
+     tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted">Nessun cliente NOTAIONEXT trovato nel tuo perimetro.</td></tr>';
+     return;
+   }
+
+   const canEdit = userCan('update');
+   tbody.innerHTML = rows.map(c => {
+     const sap = _aiSapKey(c.SAP);
+     const ai = _getAiData(sap);
+     const contatto = escapeHtml(ai.Contatto || '');
+     const succ = (ai.SuccessoAI ?? '');
+
+     const tel = cleanPhone(c.Telefono);
+     const em = cleanEmail(c.e_mail);
+
+     // NOTE: mantengo HTML semplice per filtri
+     const telTxt = tel ? escapeHtml(tel) : 'N/D';
+     const emTxt = em ? escapeHtml(em) : 'N/D';
+
+     const contAttr = canEdit ? 'contenteditable="true" class="editable-cell"' : '';
+     const contBlur = canEdit ? `window.saveNotaioNextAIField('${sap}','Contatto',this.innerText)` : '';
+     const succBlur = canEdit ? `window.saveNotaioNextAIField('${sap}','SuccessoAI',this.value)` : '';
+
+     return `
+       <tr>
+         <td class="fw-bold">${escapeHtml(sap)}</td>
+         <td>${escapeHtml(c.Nome || '')}</td>
+         <td>${telTxt}</td>
+         <td>${emTxt}</td>
+         <td ${contAttr} onblur="${contBlur}" style="min-width:520px; max-width:900px; white-space:normal;">${contatto}</td>
+         <td style="width:90px; min-width:90px;">
+           <input type="number" class="form-control form-control-sm" style="width:70px; padding-left:6px; padding-right:6px;" min="0" max="100" step="1" ${canEdit ? '' : 'disabled'} value="${escapeHtml(succ)}" onblur="${succBlur}" placeholder="%">
+         </td>
+       </tr>`;
+   }).join('');
+ };
+
+    
+window.updateFatturatoTotals = () => { const tbody = document.getElementById('tabellaFatturatoFull'); const trs = tbody.getElementsByTagName('tr'); let sumUna = 0, sumFin = 0, sumWkiAn = 0, sumM365An = 0, sumGrandEvaso = 0; for(let tr of trs) { if(tr.style.display !== 'none') { const tds = tr.getElementsByTagName('td'); if(tds.length > 19) { const una = parseFloat(tds[11].getAttribute('data-val')) || 0; const fin = parseFloat(tds[18].getAttribute('data-val')) || 0; sumUna += una; sumFin += fin; sumWkiAn += parseFloat(tds[19].getAttribute('data-val')) || 0; sumM365An += parseFloat(tds[20].getAttribute('data-val')) || 0; const stato = (tds[14].innerText || '').trim().toUpperCase();
         // TOTALE COMPLESSIVO: somma (Una_Tantum + Finanziario) SOLO per righe filtrate con Stato = 'Ordine Evaso'
         const isEvaso = (stato === 'ORDINE EVASO' || stato === 'EVASO');
         if(isEvaso) {
@@ -1141,7 +1330,14 @@ document.getElementById('mapResultCount').innerText = clientiDaMappare.length; i
     function renderTabelle() { _initDrops(); const isAdmin = isCurrentAdmin(); const canEditMaster = hasAzioniColumn(); const canEditLists = isCurrentAdmin(); const colConfigs = [{ label: "SAP", key: "SAP" }, { label: "Nome", key: "Nome" }, { label: "PIVA", key: "PIVA" }, { label: "Cod. Fiscale", key: "Codice_Fiscale" }, { label: "Account", key: "Account" }, { label: "Via", key: "Via_e_numero" }, { label: "Città", key: "Città" }, { label: "Prov", key: "Prov" }, { label: "Telefono", key: "Telefono" }, { label: "Email", key: "e_mail" }, { label: "Note", key: "Note" }]; let th = '<tr>'; if(canEditLists) th += '<th class="bg-secondary text-white">Az.</th>'; colConfigs.forEach((conf, index) => { th += `<th>${conf.label}<input type="text" class="header-filter" onkeyup="window.filterClienti(${index})"></th>`; }); th += '</tr>'; document.getElementById('theadClientiFull').innerHTML = th; let tbodyHtml = ''; clientiView.forEach(c => { tbodyHtml += '<tr>'; if(canEditLists) tbodyHtml += `<td style="white-space:nowrap;"><i class="bi bi-pencil-square text-primary me-2" style="cursor:pointer" onclick="window.openEditCliente('${c.firebaseKey}')"></i>${userCan('del') ? `<i class="bi bi-trash text-danger" style="cursor:pointer" onclick="window.eliminaCliente('${c.firebaseKey}')"></i>` : ''}</td>`; colConfigs.forEach(conf => { let val = (conf.key === 'Codice_Fiscale') ? getCodiceFiscale(c) : (c[conf.key] ?? ''); tbodyHtml += `<td>${val}</td>`; }); tbodyHtml += '</tr>'; }); document.getElementById('tabellaClientiFull').innerHTML = tbodyHtml; const contractCols = ["ACCOUNT", "SAP", "NOME CLIENTE", "CODICE SISTEMA", "VALORE RINNOVO", "VAL. UNIT. MENS.", "TESTO ORDINE", "Q.tà", "PASSO", "DATA SCADENZA", "PAGAMENTO", "CODICE"]; let htmlConHead = '<tr>'; if(canEditLists) htmlConHead += '<th class="bg-secondary text-white">Az.</th>'; contractCols.forEach((colName, index) => { htmlConHead += `<th>${colName}<input type="text" class="header-filter" onkeyup="window.filterContratti(${index})"></th>`; }); htmlConHead += '</tr>'; document.getElementById('theadContrattiFull').innerHTML = htmlConHead; let htmlCon = ''; contrattiView.forEach(c => { const valMen = parseFloat(c.VAL_UN_MEN || 0).toLocaleString('it-IT', {minimumFractionDigits: 2, maximumFractionDigits: 2}); let dataFmt = c.DATA_SCAD; if(c.DATA_SCAD) { const d = new Date(c.DATA_SCAD); if(!isNaN(d.getTime())) dataFmt = d.toLocaleDateString('it-IT'); } htmlCon += `<tr>`; if(canEditLists) htmlCon += `<td style="white-space:nowrap;"><i class="bi bi-pencil-square text-primary me-2" style="cursor:pointer" onclick="window.openEditContratto('${c.firebaseKey}')"></i>${userCan('del') ? `<i class="bi bi-trash text-danger" style="cursor:pointer" onclick="window.eliminaContratto('${c.firebaseKey}')"></i>` : ''}</td>`; htmlCon += `<td>${c["Account"]||c["Agente_dell'ORDINE"]||''}</td><td>${c.SAP||''}</td><td>${c.Nome||''}</td><td>${c.Codice_SISTEMA||''}</td><td>${c.VALORE_RINNOVO||''}</td><td>${valMen}</td><td>${c.TESTO_ORD_||''}</td><td>${c["QUANTITA'"]||''}</td><td>${c.PASSO||''}</td><td>${dataFmt}</td><td>${c.Pagamento||''}</td><td>${c.CODICE||''}</td></tr>`; }); document.getElementById('tabellaContrattiFull').innerHTML = htmlCon; const tbFatt = document.getElementById('tabellaFatturatoFull'); tbFatt.innerHTML = ''; fatturatoView.forEach(ord => { let mesi = 0; if(ord.Data_prima_fatt) { const dt = new Date(ord.Data_prima_fatt); if(!isNaN(dt)) mesi = Math.max(0, Math.min(12, 13 - (dt.getMonth()+1))); } const wkiMese = parseFloat(ord.WKI_m || ord.Can_WKI_mese || 0); const m365Mese = parseFloat(ord.M365_m || ord.M365_mese || 0); const unaTantum = parseFloat(ord.Una_Tantum || 0); const wkiTot = wkiMese * mesi; const m365Tot = m365Mese * mesi; const finanziario = (wkiMese + m365Mese) * 12; const k = ord.firebaseKey; const checkedAttr = ord.isFatturato ? 'checked' : ''; tbFatt.innerHTML += `<tr><td style="white-space:nowrap;"><i class="bi bi-pencil-square text-primary me-2" style="cursor:pointer" onclick="window.openEditOrdine('${k}')"></i>${userCan('del') ? `<i class="bi bi-trash text-danger" style="cursor:pointer" onclick="window.eliminaRigaFatturato('${k}')"></i>` : ''}</td><td contenteditable="true" class="editable-cell" onblur="window.salvaModificaCella(this,'${k}','Data_ordine')">${ord.Data_ordine||''}</td><td>${ord.SAP||''}</td><td>${ord.Cliente||''}</td><td contenteditable="true" class="editable-cell" onblur="window.salvaModificaCella(this,'${k}','Account')">${ord.Account||''}</td><td contenteditable="true" class="editable-cell fw-bold text-danger" onblur="window.salvaModificaCella(this,'${k}','Ordine_AP')">${ord.Ordine_AP||''}</td><td contenteditable="true" class="editable-cell" onblur="window.salvaModificaCella(this,'${k}','Descrizione_Ordine')">${ord.Descrizione_Ordine||''}</td><td class="small" style="max-width:220px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${ord.Link_Teams ? `<a href="${ord.Link_Teams}" target="_blank" rel="noopener">Apri</a>` : ''}</td><td contenteditable="true" class="editable-cell small" onblur="window.salvaModificaCella(this,'${k}','Note')">${ord.Note||''}</td><td contenteditable="true" class="editable-cell text-end" onblur="window.salvaModificaCella(this,'${k}','WKI_m')">${wkiMese}</td><td contenteditable="true" class="editable-cell text-end" onblur="window.salvaModificaCella(this,'${k}','M365_m')">${m365Mese}</td><td contenteditable="true" class="editable-cell text-end" data-val="${unaTantum}" onblur="window.salvaModificaCella(this,'${k}','Una_Tantum')">${unaTantum.toFixed(2)}</td><td class="text-center small" title="Successo %">${(ord.Successo_perc ?? "")}</td><td contenteditable="true" class="editable-cell" onblur="window.salvaModificaCella(this,'${k}','Finanaziata')">${ord.Finanaziata||''}</td><td contenteditable="true" class="editable-cell" onblur="window.salvaModificaCella(this,'${k}','Stato')">${ord.Stato||''}</td><td class="text-center align-middle"><input type="checkbox" class="form-check-input border-secondary" ${checkedAttr} onchange="window.toggleFatturato(this, '${k}')" style="transform: scale(1.2);"></td><td contenteditable="true" class="editable-cell fw-bold" onblur="window.salvaModificaCella(this,'${k}','Data_prima_fatt')">${ord.Data_prima_fatt||''}</td><td class="bg-light text-center fw-bold">${mesi}</td><td class="bg-light text-end small" data-val="${finanziario}">${finanziario.toFixed(2)}</td><td class="bg-light text-end small" data-val="${wkiTot}">${wkiTot.toFixed(2)}</td><td class="bg-light text-end small" data-val="${m365Tot}">${m365Tot.toFixed(2)}</td></tr>`; }); window.updateFatturatoTotals(); renderTabellaMigrazioni(); }
 
     const usersRef = ref(db, 'users'); onValue(usersRef, (snap) => { document.getElementById('criticalErrorAlert').style.display = 'none'; globalUsers = snap.val() || {}; if(auth.currentUser) checkUserMapping(auth.currentUser); }, (error) => { console.error("Errore lettura Users:", error); document.getElementById('criticalErrorAlert').style.display = 'block'; });
-    onValue(ref(db, '/'), (snap) => { const data = snap.val() || {}; globalClienti = data.clienti ? Object.entries(data.clienti).map(([k,v])=>({...v, firebaseKey: k})) : []; globalContratti = data.contratti ? Object.entries(data.contratti).map(([k,v])=>({...v, firebaseKey: k})) : []; globalFatturato = data.fatturato ? Object.entries(data.fatturato).map(([k,v])=>({...v, firebaseKey: k})) : []; globalMigrazioni = data.migrazioni ? Object.entries(data.migrazioni).map(([k,v])=>({...v, firebaseKey: k})) : []; document.getElementById('dbStatus').innerText = `Online: ${globalClienti.length} Cli, ${globalFatturato.length} Ord, ${globalMigrazioni.length} Migr.`; if (currentUserEmail) { rebuildVisibilityContext(); renderTabelle(); } });
+    const aiRef = ref(db, 'notaionext_ai');
+ onValue(aiRef, (snap) => {
+   globalNotaioNextAI = snap.val() || {};
+   if(currentUserEmail) window.renderTabellaNotaioNextAI();
+ }, (error) => {
+   console.error('Errore lettura NOTAIONEXT AI:', error);
+ });
+onValue(ref(db, '/'), (snap) => { const data = snap.val() || {}; globalClienti = data.clienti ? Object.entries(data.clienti).map(([k,v])=>({...v, firebaseKey: k})) : []; globalContratti = data.contratti ? Object.entries(data.contratti).map(([k,v])=>({...v, firebaseKey: k})) : []; globalFatturato = data.fatturato ? Object.entries(data.fatturato).map(([k,v])=>({...v, firebaseKey: k})) : []; globalMigrazioni = data.migrazioni ? Object.entries(data.migrazioni).map(([k,v])=>({...v, firebaseKey: k})) : []; document.getElementById('dbStatus').innerText = `Online: ${globalClienti.length} Cli, ${globalFatturato.length} Ord, ${globalMigrazioni.length} Migr.`; if (currentUserEmail) { rebuildVisibilityContext(); renderTabelle(); } });
 
 </script>
 </body>
